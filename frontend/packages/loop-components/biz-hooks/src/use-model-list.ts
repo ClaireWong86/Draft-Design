@@ -11,7 +11,11 @@ export const useModelList = (spaceID: string, scenario?: Scenario) => {
       page_size: 100,
       page_token: '0',
       scenario: scenario || Scenario.scenario_prompt_debug,
-    }),
+    }).catch(() => ({
+      models: [],
+      has_more: false,
+      total: 0,
+    })),
   );
   return service;
 };

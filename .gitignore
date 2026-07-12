@@ -42,6 +42,9 @@ log/
 **/tmp/
 **/temp/
 
+# local secrets
+.env.local
+
 # node modules
 node_modules/
 

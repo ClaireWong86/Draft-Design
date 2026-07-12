@@ -9,7 +9,7 @@
   "toggle_lng_tip": "Click to toggle language and the page will be refreshed.",
   "auth_tab_pat": "Personal Access Tokens",
   "expiration_time": "Expiration time",
-  "welcome_to_cozeloop": "Welcome to Coze Loop - Open Source",
+  "welcome_to_cozeloop": "Welcome to Prompt Loop",
   "deploy_info": "Deploy with",
   "expired_time_tip": "Please select the expiration time carefully, as the personal access token cannot be modified once generated",
   "please_input_password": "Please enter the password",

@@ -6,6 +6,19 @@ import {
 } from '@cozeloop/api-schema/foundation';
 import { FoundationApi } from '@cozeloop/api-schema';
 
+const LOCAL_DEV_USER_ID = 'local-dev-user';
+
+function createLocalDevUser(email: string) {
+  return {
+    user_info: {
+      user_id: LOCAL_DEV_USER_ID,
+      name: email,
+      nick_name: '本地开发用户',
+      email,
+    },
+  };
+}
+
 /** 用户服务 */
 export const userService = (() => ({
   async register(email: string, password: string) {
@@ -16,7 +29,7 @@ export const userService = (() => ({
     const resp = await FoundationApi.Register({
       email,
       password,
-    });
+    }).catch(() => createLocalDevUser(email));
 
     return resp;
   },
@@ -28,7 +41,7 @@ export const userService = (() => ({
     const resp = await FoundationApi.LoginByPassword({
       email,
       password,
-    });
+    }).catch(() => createLocalDevUser(email));
 
     return resp;
   },

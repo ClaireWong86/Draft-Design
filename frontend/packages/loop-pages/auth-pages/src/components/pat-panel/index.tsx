@@ -19,9 +19,7 @@ interface Props {
   className?: string;
 }
 
-const PAT_LINK_DOC =
-  // cp-disable-next-line
-  'https://www.coze.cn/open/docs/developer_guides/coze_api_overview';
+const PAT_LINK_DOC = 'https://github.com/ClaireWong86/Draft-Design';
 
 const PAT_PAGE_SIZE = 100;
 

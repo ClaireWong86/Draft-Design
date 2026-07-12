@@ -12,6 +12,7 @@ import {
   type SelectProps,
 } from '@coze-arch/coze-design';
 
+import { pickPreferredModel, sortModelsByPreference } from './model-preference';
 import { type ModelItemProps, ModelOption } from './model-option';
 
 export interface ModelSelectOption {
@@ -74,18 +75,31 @@ export function ModelSelectWithObject(
     renderSelectedModelItem,
   } = props;
 
+  const sortedModelList = useMemo(
+    () => sortModelsByPreference(modelList),
+    [modelList],
+  );
+
+  const availableModels = useMemo(
+    () => sortedModelList.filter(model => !model.disabled),
+    [sortedModelList],
+  );
+
   const { modelGroups, modelOptions, hasSeries } = useMemo(() => {
-    const hasSeriesFlag = modelList.some(model => model?.series?.name);
+    const hasSeriesFlag = availableModels.some(model => model?.series?.name);
 
     if (!hasSeriesFlag) {
       return {
-        modelOptions: modelList,
+        modelOptions: availableModels,
         hasSeries: hasSeriesFlag,
         modelGroups: [],
       };
     }
 
-    const modelSeriesGroups = groupBy(modelList, model => model?.series?.name);
+    const modelSeriesGroups = groupBy(
+      availableModels,
+      model => model?.series?.name,
+    );
 
     const groupedModels = Object.values(modelSeriesGroups).filter(
       (group): group is ModelItemProps[] => !!group?.length,
@@ -94,17 +108,17 @@ export function ModelSelectWithObject(
     return {
       modelGroups: groupedModels,
       hasSeries: hasSeriesFlag,
-      modelOptions: modelList,
+      modelOptions: sortedModelList,
     };
-  }, [modelList]);
+  }, [availableModels]);
 
   const val = useMemo(() => (value ? getOption(value) : undefined), [value]);
 
   useEffect(() => {
-    if (!value && defaultSelectFirstModel && modelList?.length) {
-      onChange?.(modelList?.[0]);
+    if (!value && defaultSelectFirstModel && availableModels?.length) {
+      onChange?.(pickPreferredModel(availableModels) ?? availableModels[0]);
     }
-  }, [modelList, defaultSelectFirstModel, value]);
+  }, [availableModels, defaultSelectFirstModel, value, onChange]);
 
   return (
     <Select

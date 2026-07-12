@@ -5,6 +5,8 @@
 
 ## Docker Compose 部署
 
+> macOS + Docker Desktop 本地启动可优先参考 [`local-macos-docker.md`](./local-macos-docker.md)。该文档记录了本机已验证的启动脚本和 Docker Desktop volume 卡住时的规避方式。
+
 ### 目录结构
 
 ```

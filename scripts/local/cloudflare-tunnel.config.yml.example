@@ -1,0 +1,10 @@
+# Copy to ~/.cloudflared/config.yml after creating the tunnel.
+# Replace <TUNNEL-UUID> and promptloop.example.com with your values.
+
+tunnel: <TUNNEL-UUID>
+credentials-file: /Users/<you>/.cloudflared/<TUNNEL-UUID>.json
+
+ingress:
+  - hostname: promptloop.example.com
+    service: http://localhost:8082
+  - service: http_status:404

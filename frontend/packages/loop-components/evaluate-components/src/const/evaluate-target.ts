@@ -1,6 +1,5 @@
 // Copyright (c) 2025 coze-dev Authors
 // SPDX-License-Identifier: Apache-2.0
-import { I18n } from '@cozeloop/i18n-adapter';
 import {
   ContentType,
   EvalTargetType,
@@ -8,15 +7,10 @@ import {
 } from '@cozeloop/api-schema/evaluation';
 
 export const evalTargetTypeMap = {
-  [EvalTargetType.CozeBot]: I18n.t('coze_agent'),
   [EvalTargetType.CozeLoopPrompt]: 'Prompt',
 };
 
 export const evalTargetTypeOptions = [
-  {
-    label: evalTargetTypeMap[EvalTargetType.CozeBot],
-    value: EvalTargetType.CozeBot,
-  },
   {
     label: evalTargetTypeMap[EvalTargetType.CozeLoopPrompt],
     value: EvalTargetType.CozeLoopPrompt,

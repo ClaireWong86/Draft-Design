@@ -9,15 +9,14 @@ import { useRouteInfo, useNavigateModule } from '@cozeloop/biz-hooks-adapter';
 import { IconCozSideNav } from '@coze-arch/coze-design/icons';
 import { Nav, Divider } from '@coze-arch/coze-design';
 
-import logo from '@/assets/images/logo.svg';
-import logoMini from '@/assets/images/coze.svg';
-
 import { UserInfoSection } from '../user-info-section';
 import { NavbarList } from './navbar-list';
 import { useMenuConfig } from './menu-config';
 import { FooterMenus } from './footer-menus';
 
 import styles from './index.module.less';
+
+const BRAND_NAME = 'Prompt Loop';
 
 export function Navbar() {
   const navigate = useNavigateModule();
@@ -65,11 +64,16 @@ export function Navbar() {
       >
         <div className="px-6 mb-[10px]">
           <Nav.Header className="flex items-center w-full gap-1 !pt-[1px] !pb-[17px] !pl-[8px] !pr-0 justify-between">
-            {isCollapsed ? (
-              <img src={logoMini} className="w-[26px] h-[26px]" />
-            ) : (
-              <img src={logo} className="h-[26px] " />
-            )}
+            <span
+              className={classNames(
+                'font-semibold text-[var(--coz-fg-primary)] whitespace-nowrap',
+                isCollapsed
+                  ? 'text-[12px] leading-[26px]'
+                  : 'text-[16px] leading-[26px]',
+              )}
+            >
+              {isCollapsed ? 'PL' : BRAND_NAME}
+            </span>
             <IconCozSideNav
               className="cursor-pointer flex-shrink-0 coz-fg-secondary h-[14px] w-[14px]"
               onClick={toggleCollapsed}

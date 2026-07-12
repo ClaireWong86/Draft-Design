@@ -1,0 +1,37 @@
+[
+  {
+    "item_key": "lf-min-wear",
+    "position": "LF",
+    "image_count": "2",
+    "scenario": "左前轮胎肩轻微偏磨，胎面主沟深度正常",
+    "reference_output": "{\"position\":\"LF\",\"level\":\"min\",\"anomaly_types\":[\"wear\"],\"score\":85}"
+  },
+  {
+    "item_key": "rf-nail-crit",
+    "position": "RF",
+    "image_count": "1",
+    "scenario": "右前轮胎面中央可见异物刺入，穿透明显",
+    "reference_output": "{\"position\":\"RF\",\"level\":\"crit\",\"anomaly_types\":[\"nail\"],\"score\":35}"
+  },
+  {
+    "item_key": "lr-bulge-sev",
+    "position": "LR",
+    "image_count": "3",
+    "scenario": "左后轮胎侧局部隆起，疑似鼓包",
+    "reference_output": "{\"position\":\"LR\",\"level\":\"sev\",\"anomaly_types\":[\"bulge\"],\"score\":48}"
+  },
+  {
+    "item_key": "rr-ok",
+    "position": "RR",
+    "image_count": "2",
+    "scenario": "右后轮各区域清晰可见，无明显结构损伤",
+    "reference_output": "{\"position\":\"RR\",\"level\":\"min\",\"anomaly_types\":[],\"score\":92}"
+  },
+  {
+    "item_key": "lf-blurry",
+    "position": "LF",
+    "image_count": "1",
+    "scenario": "左前轮照片严重反光模糊，关键区域无法辨认",
+    "reference_output": "{\"position\":\"LF\",\"image_quality\":\"blurry\",\"level\":\"min\",\"anomaly_types\":[]}"
+  }
+]

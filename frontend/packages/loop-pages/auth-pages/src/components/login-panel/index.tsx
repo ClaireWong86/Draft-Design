@@ -5,12 +5,13 @@ import { useState } from 'react';
 import { I18n } from '@cozeloop/i18n-adapter';
 import { Input, Button, Typography } from '@coze-arch/coze-design';
 
-import loopBanner from '@/assets/loop-banner.png';
 import { ReactComponent as IconGithub } from '@/assets/github.svg';
 
 import { SwitchLang } from '../switch-lng';
 
 import s from './index.module.less';
+
+const GITHUB_PROFILE_URL = 'https://github.com/ClaireWong86';
 
 interface Props {
   loading?: boolean;
@@ -38,7 +39,7 @@ export function LoginPanel({ loading, onLogin, onRegister }: Props) {
     <div className={s.container}>
       <SwitchLang className="absolute right-[12px] top-[12px]" />
       <div className="flex flex-col items-center">
-        <img src={loopBanner} className={s.banner} />
+        <div className={s.brandMark}>Prompt Loop</div>
         <div className="text-[18px] font-medium leading-[36px] my-[20px]">
           {I18n.t('welcome_to_cozeloop')}
         </div>
@@ -101,14 +102,14 @@ export function LoginPanel({ loading, onLogin, onRegister }: Props) {
       </div>
       <div className={s.copyright}>
         <Text component="div" type="secondary">
-          ©2025 Coze Loop
+          ©2025 Prompt Loop
         </Text>
         <Text type="secondary">
           {I18n.t('deploy_info')}
           <span> · </span>
           <Text
             link={{
-              href: 'https://github.com/coze-dev/coze-loop?tab=Apache-2.0-1-ov-file',
+              href: `${GITHUB_PROFILE_URL}?tab=Apache-2.0-1-ov-file`,
               target: '_blank',
             }}
           >
@@ -117,14 +118,14 @@ export function LoginPanel({ loading, onLogin, onRegister }: Props) {
           <span> | </span>
           <Text
             link={{
-              href: 'https://github.com/coze-dev/coze-loop',
+              href: GITHUB_PROFILE_URL,
               target: '_blank',
             }}
             icon={
               <IconGithub className="w-[14px] h-[14px] translate-y-[1px]" />
             }
           >
-            coze-dev/coze-loop
+            ClaireWong86
           </Text>
         </Text>
       </div>

@@ -2,6 +2,8 @@
 
 Thank you for your interest in contributing to Cozeloop! This document provides guidelines for contributing to the project, covering contribution methods, project overview, development environment setup, code submission process, coding style and conventions, testing requirements, documentation requirements, and CI/CD processes.
 
+> **Prompt Loop fork:** This repository is branded as **Prompt Loop** for UI and docs. For fork-specific setup, scripts, rebrand rules, and PR checklist, see **[docs/prompt-loop/contributing.md](docs/prompt-loop/contributing.md)**.
+
 ## Ways to Contribute
 
 You can contribute to the Cozeloop project in several ways:

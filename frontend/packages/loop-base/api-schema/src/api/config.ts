@@ -34,6 +34,58 @@ function getBaseUrl() {
   }
 }
 
+function shouldUseLocalDevFallback(uri: string, error: unknown) {
+  if (getBaseUrl()) {
+    return false;
+  }
+
+  const isLocalHost =
+    globalThis.location?.hostname === 'localhost' ||
+    globalThis.location?.hostname === '127.0.0.1';
+  const isUnavailableApi =
+    error instanceof SyntaxError ||
+    (error instanceof Error && error.message === 'NotFound');
+
+  return isLocalHost && uri.startsWith('/api/') && isUnavailableApi;
+}
+
+function getLocalDevFallback() {
+  return {
+    code: 0,
+    total: 0,
+    has_more: false,
+    next_page_token: '',
+    user_info: {
+      user_id: 'local-dev-user',
+      name: 'local-dev-user',
+      nick_name: '本地开发用户',
+      email: 'local-dev@example.com',
+    },
+    spaces: [
+      {
+        id: 'local-dev-space',
+        name: '本地开发空间',
+        description: 'Local development space',
+        space_type: 1,
+        owner_user_id: 'local-dev-user',
+        enterprise_id: 'personal',
+      },
+    ],
+    models: [],
+    users: [],
+    prompts: [],
+    datasets: [],
+    evaluators: [],
+    experiments: [],
+    tagInfos: [],
+    spans: [],
+    traces: [],
+    views: [],
+    annotations: [],
+    templates: [],
+  };
+}
+
 export function createAPI<
   T extends {},
   K,
@@ -63,6 +115,10 @@ export function createAPI<
 
           return data;
         } catch (e) {
+          if (shouldUseLocalDevFallback(uri, e)) {
+            return getLocalDevFallback();
+          }
+
           options.disableErrorToast || onClientError(uri, e);
           onClientBizError(uri, e);
           throw e;
