@@ -57,6 +57,9 @@ export function MultiModalItem({
             )
           );
         } else if (item.type === ContentType.ImageURL) {
+          const previewUrl =
+            (item?.image_url as { thumb_url?: string } | undefined)
+              ?.thumb_url || item?.image_url?.url;
           return (
             <ImagePreview
               key={item.uid}
@@ -64,7 +67,7 @@ export function MultiModalItem({
             >
               <div className={styles['image-preview-list']}>
                 <Image
-                  src={item?.image_url?.url}
+                  src={previewUrl}
                   className="w-full h-full"
                   imgStyle={{
                     objectFit: 'contain',
@@ -78,8 +81,7 @@ export function MultiModalItem({
                   color="primary"
                   icon={<IconCozDownload />}
                   onClick={() =>
-                    item?.image_url?.url &&
-                    downloadImageWithCustomName(item?.image_url?.url)
+                    previewUrl && downloadImageWithCustomName(previewUrl)
                   }
                 />
               </div>

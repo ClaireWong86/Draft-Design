@@ -49,6 +49,7 @@ func (a *DatasetRPCAdapter) CreateDataset(ctx context.Context, param *rpc.Create
 		Fields:      fields,
 		Features: &domain_dataset.DatasetFeatures{
 			EditSchema: gptr.Of(true),
+			MultiModal: gptr.Of(true),
 		},
 	})
 	if err != nil {

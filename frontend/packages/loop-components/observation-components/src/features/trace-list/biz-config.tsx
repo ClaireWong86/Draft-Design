@@ -178,7 +178,7 @@ export const getBizConfig = (customParams: Record<string, any>) => ({
       },
       {
         value: PlatformType.InnerCozeBot,
-        label: 'Coze Bot',
+        label: i18nService.t('filter_coze_agent'),
       },
     ] as OptionProps[],
     spanListTypeOptions: [

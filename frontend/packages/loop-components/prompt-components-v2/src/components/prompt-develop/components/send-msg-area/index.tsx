@@ -197,6 +197,25 @@ export function SendMsgArea({
       return;
     }
 
+    const incompleteImage = (queryMsg?.parts || []).some(part => {
+      if (
+        part.type !== ContentType.ImageURL &&
+        part.type !== ContentType.VideoURL
+      ) {
+        return false;
+      }
+      if (part.status === 'uploading' || part.status === 'uploadFail') {
+        return true;
+      }
+      const media =
+        part.type === ContentType.ImageURL ? part.image_url : part.video_url;
+      return !media?.uri;
+    });
+    if (incompleteImage) {
+      Toast.error(I18n.t('image_upload_error'));
+      return;
+    }
+
     onMessageSend?.(queryMsg);
     setQueryMsg({ role: Role.User });
     setQueryMsgKey(nanoid());

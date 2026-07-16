@@ -204,6 +204,7 @@ type ProtocolConfig struct {
 	ProtocolConfigQwen     *ProtocolConfigQwen     `json:"protocol_config_qwen" yaml:"protocol_config_qwen" mapstructure:"protocol_config_qwen"`
 	ProtocolConfigQianfan  *ProtocolConfigQianfan  `json:"protocol_config_qianfan" yaml:"protocol_config_qianfan" mapstructure:"protocol_config_qianfan"`
 	ProtocolConfigArkBot   *ProtocolConfigArkBot   `json:"protocol_config_ark_bot" yaml:"protocol_config_ark_bot" mapstructure:"protocol_config_ark_bot"`
+	ProtocolConfigJoyBuild *ProtocolConfigJoyBuild `json:"protocol_config_joybuild" yaml:"protocol_config_joybuild" mapstructure:"protocol_config_joybuild"`
 }
 
 type ProtocolConfigArk struct {
@@ -272,6 +273,8 @@ type ProtocolConfigArkBot struct {
 	RetryTimes    *int64            `json:"retry_times" yaml:"retry_times" mapstructure:"retry_times"`
 	CustomHeaders map[string]string `json:"custom_headers" yaml:"custom_headers" mapstructure:"custom_headers"`
 }
+
+type ProtocolConfigJoyBuild struct{}
 
 type ScenarioConfig struct {
 	Scenario    Scenario `json:"scenario" yaml:"scenario" mapstructure:"scenario"`
@@ -406,6 +409,7 @@ const (
 	ProtocolQwen      Protocol = "qwen"
 	ProtocolQianfan   Protocol = "qianfan"
 	ProtocolArkBot    Protocol = "arkbot"
+	ProtocolJoyBuild  Protocol = "joybuild"
 )
 
 type Family string

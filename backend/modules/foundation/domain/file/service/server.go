@@ -169,7 +169,10 @@ func (fs fileService) SignUploadFile(ctx context.Context, req *file.SignUploadFi
 			return nil, nil, err
 		}
 		if parsedURL.Host == localos.GetLocalOSHost() {
-			signUrl = fmt.Sprintf("%s?%s", parsedURL.Path, parsedURL.RawQuery)
+			// Use EscapedPath (not Path) so percent-encoding of object keys with
+			// spaces / non-ASCII / special chars is preserved. Path is decoded and
+			// would corrupt the URL, breaking the SigV4 signature (MinIO 403).
+			signUrl = fmt.Sprintf("%s?%s", parsedURL.EscapedPath(), parsedURL.RawQuery)
 		}
 		uris = append(uris, signUrl)
 	}
@@ -221,7 +224,9 @@ func (fs fileService) SignDownLoadFile(ctx context.Context, req *file.SignDownlo
 			return nil, err
 		}
 		if parsedURL.Host == localos.GetLocalOSHost() {
-			signUrl = fmt.Sprintf("%s?%s", parsedURL.Path, parsedURL.RawQuery)
+			// See SignUploadFile: EscapedPath preserves percent-encoding so the
+			// SigV4 signature stays valid for keys with spaces / non-ASCII chars.
+			signUrl = fmt.Sprintf("%s?%s", parsedURL.EscapedPath(), parsedURL.RawQuery)
 		}
 		uris = append(uris, signUrl)
 	}

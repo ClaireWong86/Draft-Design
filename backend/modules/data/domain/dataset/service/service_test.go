@@ -10,6 +10,7 @@ import (
 	"go.uber.org/mock/gomock"
 
 	db "github.com/coze-dev/coze-loop/backend/infra/db/mocks"
+	fileserver "github.com/coze-dev/coze-loop/backend/infra/fileserver/mocks"
 	idgen "github.com/coze-dev/coze-loop/backend/infra/idgen/mocks"
 	plock "github.com/coze-dev/coze-loop/backend/infra/lock/mocks"
 	conf "github.com/coze-dev/coze-loop/backend/modules/data/domain/component/conf/mocks"
@@ -31,6 +32,7 @@ func TestNewDatasetServiceImpl(t *testing.T) {
 	mockProducer := mq.NewMockIDatasetJobPublisher(ctrl)
 	mockFSUnion := vfs.NewMockIUnionFS(ctrl)
 	mockLocker := plock.NewMockILocker(ctrl)
+	mockObjectStorage := fileserver.NewMockBatchObjectStorage(ctrl)
 
 	// Setup mock expectations for config getters
 	mockConfiger.EXPECT().GetDatasetItemStorage().Return(nil).AnyTimes()
@@ -54,6 +56,7 @@ func TestNewDatasetServiceImpl(t *testing.T) {
 					mockProducer,
 					mockFSUnion,
 					mockLocker,
+					mockObjectStorage,
 				)
 
 				// Verify service is not nil

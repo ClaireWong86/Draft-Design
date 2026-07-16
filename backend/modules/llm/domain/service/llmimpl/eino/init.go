@@ -36,6 +36,7 @@ func NewLLM(ctx context.Context, model *entity.Model, opts ...entity.Option) (*L
 	// 根据protocol导航到不同的builder
 	var err error
 	var chatModel einoModel.ToolCallingChatModel
+	var joyBuildModel IJoyBuildChatModel
 	switch model.Protocol {
 	case entity.ProtocolArk:
 		chatModel, err = arkBuilder(ctx, model, opts...)
@@ -55,6 +56,8 @@ func NewLLM(ctx context.Context, model *entity.Model, opts ...entity.Option) (*L
 		chatModel, err = qianfanBuilder(ctx, model, opts...)
 	case entity.ProtocolArkBot:
 		chatModel, err = arkBotBuilder(ctx, model, opts...)
+	case entity.ProtocolJoyBuild:
+		joyBuildModel, err = newJoyBuildChatModel(model)
 	default:
 		err = errors.Errorf("eino unsupport the protocol:%s", model.Protocol)
 	}
@@ -65,6 +68,7 @@ func NewLLM(ctx context.Context, model *entity.Model, opts ...entity.Option) (*L
 		frame:     model.Frame,
 		protocol:  model.Protocol,
 		chatModel: chatModel,
+		joyBuild:  joyBuildModel,
 	}, nil
 }
 

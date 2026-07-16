@@ -17,6 +17,7 @@ type LLM struct {
 	frame     entity.Frame
 	protocol  entity.Protocol
 	chatModel IEinoChatModel
+	joyBuild  IJoyBuildChatModel
 }
 
 //go:generate mockgen -destination=mocks/llm.go -package=mocks . IEinoChatModel
@@ -24,7 +25,15 @@ type IEinoChatModel interface {
 	einoModel.ToolCallingChatModel
 }
 
+type IJoyBuildChatModel interface {
+	Generate(ctx context.Context, input []*entity.Message, opts ...entity.Option) (*entity.Message, error)
+	Stream(ctx context.Context, input []*entity.Message, opts ...entity.Option) (entity.IStreamReader, error)
+}
+
 func (l *LLM) Generate(ctx context.Context, input []*entity.Message, opts ...entity.Option) (*entity.Message, error) {
+	if l.protocol == entity.ProtocolJoyBuild {
+		return l.joyBuild.Generate(ctx, input, opts...)
+	}
 	// 解析option
 	optsDO := entity.ApplyOptions(nil, opts...)
 	einoOpts, err := entity.FromDOOptions(optsDO)
@@ -54,6 +63,9 @@ func (l *LLM) Generate(ctx context.Context, input []*entity.Message, opts ...ent
 func (l *LLM) Stream(ctx context.Context, input []*entity.Message, opts ...entity.Option) (
 	entity.IStreamReader, error,
 ) {
+	if l.protocol == entity.ProtocolJoyBuild {
+		return l.joyBuild.Stream(ctx, input, opts...)
+	}
 	// 解析 option
 	optsDO := entity.ApplyOptions(nil, opts...)
 	einoOpts, err := entity.FromDOOptions(optsDO)

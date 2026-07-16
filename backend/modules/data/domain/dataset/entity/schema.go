@@ -81,7 +81,33 @@ func (s *FieldSchema) ValidateData(d *FieldData) error {
 		// Notice: 暂不校验文件大小与格式
 
 	case ContentTypeMultiPart:
-		return errors.Errorf("multipart content type not supported")
+		return s.validateMultiPartData(d)
+	}
+	return nil
+}
+
+// validateMultiPartData 校验图文混排数据：限制 part 数量、附件文件数，并确保子内容类型受支持
+func (s *FieldSchema) validateMultiPartData(d *FieldData) error {
+	spec := s.MultiModelSpec
+	if spec != nil && spec.MaxPartCount > 0 && int64(len(d.Parts)) > spec.MaxPartCount {
+		return errors.Errorf(`part count out of range, max_part_count=%d, part_count=%d`, spec.MaxPartCount, len(d.Parts))
+	}
+	var fileCount int
+	for _, part := range d.Parts {
+		if part == nil {
+			continue
+		}
+		switch part.ContentType {
+		case ContentTypeText:
+			// 文本 part 无需额外校验
+		case ContentTypeImage, ContentTypeAudio, ContentTypeVideo:
+			fileCount += len(part.Attachments)
+		default:
+			return errors.Errorf(`unsupported multipart sub content type: %s`, part.ContentType)
+		}
+	}
+	if spec != nil && spec.MaxFileCount > 0 && int64(fileCount) > spec.MaxFileCount {
+		return errors.Errorf(`file count out of range, max_file_count=%d, file_count=%d`, spec.MaxFileCount, fileCount)
 	}
 	return nil
 }

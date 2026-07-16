@@ -8,16 +8,11 @@ import { TypographyText } from '@cozeloop/shared-components';
 import { I18n } from '@cozeloop/i18n-adapter';
 import { TooltipWhenDisabled } from '@cozeloop/components';
 import {
-  useResourcePageJump,
-  useOpenWindow,
-} from '@cozeloop/biz-hooks-adapter';
-import {
   type AnnotateRecord,
   type ColumnAnnotation,
 } from '@cozeloop/api-schema/evaluation';
 import { tag } from '@cozeloop/api-schema/data';
 import { StoneEvaluationApi, DataApi } from '@cozeloop/api-schema';
-import { IconCozLongArrowTopRight } from '@coze-arch/coze-design/icons';
 import {
   CozInputNumber,
   type InputNumberProps,
@@ -26,8 +21,6 @@ import {
   TextArea,
   type TextAreaProps,
 } from '@coze-arch/coze-design';
-
-import { TagDetailLink } from './tag-detail-link';
 
 interface Props {
   spaceID: string;
@@ -242,9 +235,6 @@ export const CategoryLabel = ({
   onCreateOption,
   ...selectProps
 }: CategoryLabelProps) => {
-  const { getTagDetailURL } = useResourcePageJump();
-  const { openBlank } = useOpenWindow();
-
   const optionList = useMemo(
     () =>
       (annotation.tag_values || [])
@@ -262,7 +252,6 @@ export const CategoryLabel = ({
                       'cozeloop_open_evaluate_tag_option_disabled_no_longer_selectable',
                     )}
                   </span>
-                  <TagDetailLink tagKey={annotation.tag_key_id} />
                 </div>
               }
               spacing={40}
@@ -283,14 +272,6 @@ export const CategoryLabel = ({
                     {item.tag_value_name}
                   </TypographyText>
                 </div>
-
-                <IconCozLongArrowTopRight
-                  className="ml-1 text-brand-9 shrink-0 cursor-pointer invisible group-hover:visible"
-                  onClick={e => {
-                    e.stopPropagation();
-                    openBlank(getTagDetailURL(annotation.tag_key_id || ''));
-                  }}
-                />
               </div>
             </TooltipWhenDisabled>
           ),

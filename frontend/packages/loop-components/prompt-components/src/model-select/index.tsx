@@ -12,7 +12,10 @@ import {
   type SelectProps,
 } from '@coze-arch/coze-design';
 
-import { pickPreferredModel, sortModelsByPreference } from './model-preference';
+import {
+  pickPreferredModel,
+  sortModelsByPreference,
+} from '../model-preference';
 import { type ModelItemProps, ModelOption } from './model-option';
 
 export interface ModelSelectOption {

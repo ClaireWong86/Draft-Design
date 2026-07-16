@@ -1,0 +1,21 @@
+# Local overlay image: rebuild ONLY the backend Go binary from source and
+# lay it over the official cozedev/coze-loop image (frontend resources reused).
+# Used by scripts/local to ship backend hotfixes without a full image rebuild.
+FROM golang:1.24-alpine AS backend_builder
+
+ENV GOPROXY=https://goproxy.cn,direct
+
+RUN apk add --no-cache git
+
+WORKDIR /coze-loop
+
+COPY ./backend/go.mod ./backend/go.sum /coze-loop/src/backend/
+RUN go mod download -C ./src/backend -x
+
+COPY ./backend/ /coze-loop/src/backend/
+RUN mkdir -p ./bin && \
+    go -C /coze-loop/src/backend build -buildvcs=false -o /coze-loop/bin/main "./cmd"
+
+FROM docker.io/cozedev/coze-loop:1.5.1
+
+COPY --from=backend_builder /coze-loop/bin/main /coze-loop/bin/main

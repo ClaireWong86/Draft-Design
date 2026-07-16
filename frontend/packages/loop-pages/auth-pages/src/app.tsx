@@ -3,11 +3,11 @@
 import { Routes, Route, Navigate } from 'react-router-dom';
 
 import { LoginPage } from './pages';
-import { AuthFrame, Logo } from './components';
+import { AuthFrame } from './components';
 
 export function App() {
   return (
-    <AuthFrame brand={<Logo className="scale-[125%] origin-top-left" />}>
+    <AuthFrame>
       <Routes>
         <Route path="login" element={<LoginPage />} />
         <Route path="*" element={<Navigate to="login" replace={true} />} />

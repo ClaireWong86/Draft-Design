@@ -137,17 +137,67 @@ export const convertMultimodalMessage = (message: Message) => {
   return message;
 };
 
+/**
+ * Browser preview blob: URLs must never be sent to the backend
+ * (it treats them as relative MinIO paths). Prefer URI so the server
+ * can sign a real download URL.
+ */
+export function sanitizeMediaURLForSend(media?: {
+  uri?: string;
+  url?: string;
+  thumb_url?: string;
+}) {
+  if (!media) {
+    return media;
+  }
+  const uri = media.uri?.trim();
+  if (uri) {
+    return { uri, url: '' };
+  }
+  const url = media.url || '';
+  if (
+    url.startsWith('http://') ||
+    url.startsWith('https://') ||
+    url.startsWith('data:')
+  ) {
+    return { uri: '', url };
+  }
+  // Drop blob: / empty / other non-fetchable previews.
+  return { uri: '', url: '' };
+}
+
+function sanitizeContentPartForSend(part: ContentPart): ContentPart {
+  if (part.type === ContentType.ImageURL && part.image_url) {
+    return {
+      ...part,
+      image_url: sanitizeMediaURLForSend(
+        part.image_url as {
+          uri?: string;
+          url?: string;
+          thumb_url?: string;
+        },
+      ),
+    };
+  }
+  if (part.type === ContentType.VideoURL && part.video_url) {
+    return {
+      ...part,
+      video_url: sanitizeMediaURLForSend(
+        part.video_url as {
+          uri?: string;
+          url?: string;
+          thumb_url?: string;
+        },
+      ),
+    };
+  }
+  return part;
+}
+
 export const convertMultimodalMessageToSend = (message: Message) => {
   const { parts, content } = message;
   if (parts?.length && content) {
-    const newParts = parts.map(it => {
-      if (it.type === ContentType.ImageURL) {
-        return {
-          ...it,
-        };
-      }
-      return it;
-    });
+    const newParts = parts.map(sanitizeContentPartForSend);
     return {
       ...message,
       content: '',
@@ -157,18 +207,10 @@ export const convertMultimodalMessageToSend = (message: Message) => {
       }),
     };
   } else if (parts?.length) {
-    const newParts = parts.map(it => {
-      if (it.type === ContentType.ImageURL) {
-        return {
-          ...it,
-        };
-      }
-      return it;
-    });
     return {
       ...message,
       content: '',
-      parts: newParts,
+      parts: parts.map(sanitizeContentPartForSend),
     };
   }
   return message;
