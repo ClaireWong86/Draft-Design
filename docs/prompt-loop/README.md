@@ -4,6 +4,7 @@
 
 | 文档 | 说明 |
 |------|------|
+| **[HANDOFF.md](./HANDOFF.md)** | **AI/工程师交接（先读这个）** |
 | [architecture.md](./architecture.md) | 系统架构图、数据流、本地拓扑 |
 | [runbook.md](./runbook.md) | 一页纸日常操作与故障速查 |
 | [contributing.md](./contributing.md) | Contributing 补充（品牌、脚本、PR 清单） |
