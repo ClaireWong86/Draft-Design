@@ -1,12 +1,13 @@
 // Copyright (c) 2025 coze-dev Authors
 // SPDX-License-Identifier: Apache-2.0
 import { useParams } from 'react-router-dom';
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 
 import {
   PromptDevelop,
   showSubmitSuccess,
 } from '@cozeloop/prompt-components-v2';
+import { I18n } from '@cozeloop/i18n-adapter';
 import { useBreadcrumb, useModalData } from '@cozeloop/hooks';
 import { useReportEvent } from '@cozeloop/components';
 import {
@@ -19,6 +20,12 @@ import { uploadFile } from '@cozeloop/biz-components-adapter';
 import { type Prompt } from '@cozeloop/api-schema/prompt';
 
 import { TraceTab } from '@/components/trace-tabs';
+import {
+  renderSmartOptimizeHeaderButtons,
+  SmartOptimizeTaskPanel,
+  SmartOptimizeWizard,
+  type OptimizeSourceType,
+} from '@/components/smart-optimize';
 import { ExecuteHistoryPanel } from '@/components/execute-history-panel';
 
 export default function PromptDevelopPage() {
@@ -29,6 +36,10 @@ export default function PromptDevelopPage() {
   const { spaceID } = useSpace();
 
   const [promptInfo, setPromptInfo] = useState<Prompt>();
+  const [activeTab, setActiveTab] = useState('dev');
+  const [wizardSourceType, setWizardSourceType] =
+    useState<OptimizeSourceType>('experiment');
+  const wizardModal = useModalData();
   const traceHistoryPannel = useModalData();
   const traceLogPannel = useModalData<string>();
   const navigate = useNavigateModule();
@@ -39,6 +50,23 @@ export default function PromptDevelopPage() {
   });
 
   const service = useModelList(spaceID);
+
+  const extraTabs = useMemo(
+    () => [
+      {
+        key: 'smart_optimize',
+        title: I18n.t('smart_optimize', '智能优化'),
+        children: (
+          <SmartOptimizeTaskPanel
+            promptID={promptID}
+            spaceID={spaceID}
+            onAdoptSuccess={() => setActiveTab('dev')}
+          />
+        ),
+      },
+    ],
+    [promptID, spaceID],
+  );
 
   return (
     <>
@@ -83,6 +111,25 @@ export default function PromptDevelopPage() {
           );
         }}
         hideSnippet={true}
+        activeTab={activeTab}
+        tabsChange={setActiveTab}
+        extraTabs={extraTabs}
+        renderHeaderButtons={buttons =>
+          renderSmartOptimizeHeaderButtons(buttons, {
+            onOpenWizard: sourceType => {
+              setWizardSourceType(sourceType);
+              wizardModal.open();
+            },
+          })
+        }
+      />
+      <SmartOptimizeWizard
+        visible={wizardModal.visible}
+        sourceType={wizardSourceType}
+        prompt={promptInfo}
+        spaceID={spaceID}
+        onClose={wizardModal.close}
+        onSubmitted={() => setActiveTab('smart_optimize')}
       />
       <TraceTab
         displayType="drawer"

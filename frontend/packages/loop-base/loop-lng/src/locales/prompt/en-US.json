@@ -341,5 +341,20 @@
   "num_words": "Number of characters: {num}",
   "max_tokens": "Max tokens",
   "max_upload_picture_num": "Upload a maximum of {num} pictures.",
-  "recent_submission_time": "Recent submission time"
+  "recent_submission_time": "Recent submission time",
+  "smart_optimize": "Smart Optimize",
+  "smart_optimize_by_experiment": "Optimize Prompt from evaluation experiments",
+  "smart_optimize_by_experiment_desc": "Optimize the Prompt using batched questions, model answers, reference answers (if any), and evaluator scores",
+  "smart_optimize_by_eval_set": "Optimize Prompt from high-quality eval sets",
+  "smart_optimize_by_eval_set_desc": "When you only have questions, model answers, and reference answers, optimize the Prompt from that evidence",
+  "smart_optimize_step_source": "Select source",
+  "smart_optimize_step_cases": "Select cases",
+  "smart_optimize_step_mapping": "Mapping & mode",
+  "smart_optimize_submit": "Start optimize",
+  "smart_optimize_task_created": "Optimize task created (Mock)",
+  "smart_optimize_task_list": "Smart optimize tasks",
+  "smart_optimize_view_report": "Report",
+  "smart_optimize_report": "Smart optimize report",
+  "smart_optimize_adopt": "Adopt to draft",
+  "smart_optimize_adopted": "Applied to draft. Click Submit New Version to commit."
 }

@@ -46,6 +46,7 @@ Level-1  config/ (6) + infra/ (4+)         工具链配置 + 基础设施
 | `tag-components` | 标签专用组件 |
 | `adapter-interfaces` | Adapter 接口定义 |
 | `evaluate-adapter` | 评测 Adapter 实现 |
+| `prompt-pages` / smart-optimize | Prompt 页内「智能优化」MVP（Mock 任务） |
 | `observation-adapter` | 可观测性 Adapter 实现 |
 | `components-with-adapter` | Adapter 消费层 |
 

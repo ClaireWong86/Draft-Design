@@ -7,6 +7,8 @@
 | [architecture.md](./architecture.md) | 系统架构图、数据流、本地拓扑 |
 | [runbook.md](./runbook.md) | 一页纸日常操作与故障速查 |
 | [contributing.md](./contributing.md) | Contributing 补充（品牌、脚本、PR 清单） |
+| [prd-smart-prompt-optimize.md](./prd-smart-prompt-optimize.md) | 智能优化 Prompt：产品需求 |
+| [trd-smart-prompt-optimize.md](./trd-smart-prompt-optimize.md) | 智能优化 Prompt：技术设计与算法 |
 
 其他指南：
 
