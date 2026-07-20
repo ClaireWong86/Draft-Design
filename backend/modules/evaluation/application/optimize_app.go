@@ -244,7 +244,7 @@ func (a *OptimizeApplication) processTask(ctx context.Context, taskID int64) {
 		return
 	}
 	_ = a.repo.UpdateProgress(ctx, taskID, 60)
-	if err := a.executeCandidate(ctx, record, out); err != nil {
+	if err := a.executeCandidateCases(ctx, record, out); err != nil {
 		_ = a.repo.Fail(ctx, taskID, err.Error())
 		return
 	}
@@ -257,10 +257,11 @@ func (a *OptimizeApplication) processTask(ctx context.Context, taskID int64) {
 	_ = a.repo.Complete(ctx, taskID, resultJSON)
 }
 
-// executeCandidate performs a real temporary execution using the generated
-// candidate messages. It deliberately does not create a Prompt version. The
-// per-case input/evaluator loop is layered on top of this adapter next.
-func (a *OptimizeApplication) executeCandidate(ctx context.Context, task *entity.OptimizeTaskRecord, out *optimizerOutput) error {
+// executeCandidateCases performs one temporary execution per selected case.
+// It deliberately does not create a Prompt version. The raw case snapshot is
+// appended as an evidence message until the field-to-variable evaluator
+// adapter is connected; outputs are never treated as evaluator scores.
+func (a *OptimizeApplication) executeCandidateCases(ctx context.Context, task *entity.OptimizeTaskRecord, out *optimizerOutput) error {
 	var snapshot optimize.OptimizePromptSnapshot
 	if err := json.Unmarshal([]byte(task.BaselinePromptJSON), &snapshot); err != nil {
 		return fmt.Errorf("decode candidate snapshot: %w", err)
@@ -273,6 +274,36 @@ func (a *OptimizeApplication) executeCandidate(ctx context.Context, task *entity
 	if len(messages) == 0 {
 		return errors.New("candidate prompt has no messages")
 	}
+	evidence, err := a.loadEvidence(ctx, task)
+	if err != nil {
+		return err
+	}
+	itemEvidence := []json.RawMessage{nil}
+	if response, ok := evidence.(*experimentservice.BatchGetExperimentResultResponse); ok && response != nil && len(response.ItemResults) > 0 {
+		itemEvidence = make([]json.RawMessage, 0, len(response.ItemResults))
+		for _, item := range response.ItemResults {
+			encoded, marshalErr := json.Marshal(item)
+			if marshalErr != nil {
+				return fmt.Errorf("marshal case evidence: %w", marshalErr)
+			}
+			itemEvidence = append(itemEvidence, encoded)
+		}
+	}
+	for index, evidenceJSON := range itemEvidence {
+		if cancelled, _ := a.repo.IsCancelRequested(ctx, task.ID); cancelled {
+			return errors.New("candidate execution cancelled")
+		}
+		caseMessages := append([]*entity.Message(nil), messages...)
+		caseText := string(evidenceJSON)
+		caseMessages = append(caseMessages, &entity.Message{Role: entity.RoleUser, Content: &entity.Content{ContentType: contentType(entity.ContentTypeText), Text: &caseText}})
+		if err := a.callCandidate(ctx, task, caseMessages); err != nil {
+			return fmt.Errorf("execute candidate case %d: %w", index, err)
+		}
+	}
+	return nil
+}
+
+func (a *OptimizeApplication) callCandidate(ctx context.Context, task *entity.OptimizeTaskRecord, messages []*entity.Message) error {
 	modelID := task.OptimizerModelID
 	maxTokens := int32(4096)
 	temperature := 0.2
