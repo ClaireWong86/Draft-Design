@@ -23,12 +23,25 @@ func convertCandidateMessages(messages []*promptdto.Message) ([]*entity.Message,
 			return nil, fmt.Errorf("message[%d]: %w", index, err)
 		}
 		result = append(result, &entity.Message{
-			Role:    entity.Role(message.GetRole()),
+			Role:    convertCandidateRole(message.GetRole()),
 			Content: content,
 			Ext:     message.GetMetadata(),
 		})
 	}
 	return result, nil
+}
+
+func convertCandidateRole(role promptdto.Role) entity.Role {
+	switch role {
+	case promptdto.RoleSystem:
+		return entity.RoleSystem
+	case promptdto.RoleAssistant:
+		return entity.RoleAssistant
+	case promptdto.RoleTool:
+		return entity.RoleTool
+	default:
+		return entity.RoleUser
+	}
 }
 
 func convertCandidateContent(message *promptdto.Message) (*entity.Content, error) {
@@ -63,7 +76,7 @@ func convertCandidatePart(part *promptdto.ContentPart) (*entity.Content, error) 
 		}
 		return &entity.Content{
 			ContentType: contentType(entity.ContentTypeImage),
-			Image: &entity.Image{URL: stringPtr(imageURL.GetURL()), URI: stringPtr(imageURL.GetURI())},
+			Image:       &entity.Image{URL: stringPtr(imageURL.GetURL()), URI: stringPtr(imageURL.GetURI())},
 		}, nil
 	case promptdto.ContentTypeVideoURL:
 		videoURL := part.GetVideoURL()
@@ -72,7 +85,7 @@ func convertCandidatePart(part *promptdto.ContentPart) (*entity.Content, error) 
 		}
 		return &entity.Content{
 			ContentType: contentType(entity.ContentTypeVideo),
-			Video: &entity.Video{URL: stringPtr(videoURL.GetURL()), URI: stringPtr(videoURL.GetURI())},
+			Video:       &entity.Video{URL: stringPtr(videoURL.GetURL()), URI: stringPtr(videoURL.GetURI())},
 		}, nil
 	default:
 		return nil, fmt.Errorf("unsupported content type %q", part.GetType())

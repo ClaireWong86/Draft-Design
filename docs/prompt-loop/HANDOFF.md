@@ -217,7 +217,7 @@ release/deployment/helm-chart/charts/app/bootstrap/init/mysql/init-sql/optimize_
 ### 本轮验证结果
 
 ```bash
-# 后端：通过
+# 后端定向编译/测试：通过（Go 1.26.5 darwin/arm64）
 go test ./modules/evaluation/application \
   ./modules/evaluation/infra/repo/optimize \
   ./api/handler/coze/loop/apis \
@@ -227,5 +227,7 @@ go test ./modules/evaluation/application \
 cd frontend/packages/loop-base/api-schema && rushx lint
 cd frontend/packages/loop-pages/prompt-pages && rushx lint
 ```
+
+本轮额外修复了实验服务接口包引用与 Prompt role（string）到评测运行时 role（enum）的显式转换。Podman machine 可启动，但完整 compose 启动目前被环境阻塞：本地仅有 `quay.io/podman/hello`，默认 `alpine` 拉取因 DNS 无法解析 `auth.docker.io` 失败；hello 镜像不含 `sh`，不能作为卷初始化镜像。
 
 IDL 已用项目锁定版本生成：Kitex `v0.13.1`、Hertz `v0.9.7`、ThriftGo `v0.4.1`，Wire `v0.6.0`。社区前端全量 `tsc -b` 仍被仓内既有的 `prompt-components-v2` SVG/CSS 与 `@/` alias 解析问题阻塞；筛选本轮目录后，仅剩同一既有 alias 问题，`smart-optimize` 组件本身无新增类型错误。

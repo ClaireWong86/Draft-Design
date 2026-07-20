@@ -15,8 +15,9 @@ import (
 	"github.com/coze-dev/coze-loop/backend/infra/idgen"
 	"github.com/coze-dev/coze-loop/backend/infra/middleware/session"
 	"github.com/coze-dev/coze-loop/backend/kitex_gen/base"
+	apis "github.com/coze-dev/coze-loop/backend/kitex_gen/coze/loop/apis"
+	expt "github.com/coze-dev/coze-loop/backend/kitex_gen/coze/loop/evaluation/expt"
 	"github.com/coze-dev/coze-loop/backend/kitex_gen/coze/loop/evaluation/optimize"
-	"github.com/coze-dev/coze-loop/backend/kitex_gen/coze/loop/evaluation/experimentservice"
 	promptdto "github.com/coze-dev/coze-loop/backend/kitex_gen/coze/loop/prompt/domain/prompt"
 	"github.com/coze-dev/coze-loop/backend/modules/evaluation/domain/component/rpc"
 	"github.com/coze-dev/coze-loop/backend/modules/evaluation/domain/entity"
@@ -34,11 +35,11 @@ type OptimizeApplication struct {
 	idgen       idgen.IIDGenerator
 	repo        repo.IOptimizeTaskRepo
 	llm         rpc.ILLMProvider
-	experiments experimentservice.ExperimentService
+	experiments apis.ExperimentService
 	queue       chan int64
 }
 
-func NewOptimizeApplication(idGenerator idgen.IIDGenerator, taskRepo repo.IOptimizeTaskRepo, llm rpc.ILLMProvider, experiments experimentservice.ExperimentService) optimize.OptimizeService {
+func NewOptimizeApplication(idGenerator idgen.IIDGenerator, taskRepo repo.IOptimizeTaskRepo, llm rpc.ILLMProvider, experiments apis.ExperimentService) optimize.OptimizeService {
 	app := &OptimizeApplication{
 		idgen:       idGenerator,
 		repo:        taskRepo,
@@ -264,7 +265,7 @@ func (a *OptimizeApplication) processTask(ctx context.Context, taskID int64) {
 type candidateCaseResult struct {
 	caseID string
 	output string
-	input map[string]any
+	input  map[string]any
 }
 
 func (a *OptimizeApplication) executeCandidateCases(ctx context.Context, task *entity.OptimizeTaskRecord, out *optimizerOutput) ([]candidateCaseResult, error) {
@@ -285,7 +286,7 @@ func (a *OptimizeApplication) executeCandidateCases(ctx context.Context, task *e
 		return nil, err
 	}
 	itemEvidence := []json.RawMessage{nil}
-	if response, ok := evidence.(*experimentservice.BatchGetExperimentResultResponse); ok && response != nil && len(response.ItemResults) > 0 {
+	if response, ok := evidence.(*expt.BatchGetExperimentResultResponse); ok && response != nil && len(response.ItemResults) > 0 {
 		itemEvidence = make([]json.RawMessage, 0, len(response.ItemResults))
 		for _, item := range response.ItemResults {
 			encoded, marshalErr := json.Marshal(item)
@@ -392,13 +393,13 @@ func (a *OptimizeApplication) loadEvidence(ctx context.Context, task *entity.Opt
 	pageNumber := int32(1)
 	useAccelerator := false
 	fullTrajectory := false
-	resp, err := a.experiments.BatchGetExperimentResult_(ctx, &experimentservice.BatchGetExperimentResultRequest{
-		WorkspaceID:     task.WorkspaceID,
-		ExperimentIds:   []int64{task.SourceID},
-		PageNumber:      &pageNumber,
-		PageSize:        &pageSize,
-		UseAccelerator:  &useAccelerator,
-		FullTrajectory:  &fullTrajectory,
+	resp, err := a.experiments.BatchGetExperimentResult_(ctx, &expt.BatchGetExperimentResultRequest{
+		WorkspaceID:    task.WorkspaceID,
+		ExperimentIds:  []int64{task.SourceID},
+		PageNumber:     &pageNumber,
+		PageSize:       &pageSize,
+		UseAccelerator: &useAccelerator,
+		FullTrajectory: &fullTrajectory,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("load experiment evidence: %w", err)
@@ -449,8 +450,14 @@ func buildOptimizeResult(record *entity.OptimizeTaskRecord, out *optimizerOutput
 		caseID := item.caseID
 		actual := item.output
 		detail := &optimize.OptimizeCaseDetail{CaseID: caseID, AfterActual: &actual}
-		if v, ok := item.input["actual_output"]; ok { s := fmt.Sprint(v); detail.BeforeActual = &s }
-		if v, ok := item.input["reference_output"]; ok { s := fmt.Sprint(v); detail.Reference = &s }
+		if v, ok := item.input["actual_output"]; ok {
+			s := fmt.Sprint(v)
+			detail.BeforeActual = &s
+		}
+		if v, ok := item.input["reference_output"]; ok {
+			s := fmt.Sprint(v)
+			detail.Reference = &s
+		}
 		result.CaseDetails = append(result.CaseDetails, detail)
 	}
 	b, err := json.Marshal(result)
@@ -464,18 +471,30 @@ func mapCaseEvidence(task *entity.OptimizeTaskRecord, raw json.RawMessage, index
 	_ = json.Unmarshal([]byte(task.MappingJSON), &mapping)
 	out := make(map[string]any)
 	for _, field := range mapping.VariableFields {
-		if field == nil { continue }
-		if value, ok := source[field.GetFromFieldName()]; ok { out[field.GetFieldName()] = value }
+		if field == nil {
+			continue
+		}
+		if value, ok := source[field.GetFromFieldName()]; ok {
+			out[field.GetFieldName()] = value
+		}
 	}
 	if mapping.ActualOutputField != nil {
-		if value, ok := source[*mapping.ActualOutputField]; ok { out["actual_output"] = value }
+		if value, ok := source[*mapping.ActualOutputField]; ok {
+			out["actual_output"] = value
+		}
 	}
 	if mapping.ReferenceOutputField != nil {
-		if value, ok := source[*mapping.ReferenceOutputField]; ok { out["reference_output"] = value }
+		if value, ok := source[*mapping.ReferenceOutputField]; ok {
+			out["reference_output"] = value
+		}
 	}
 	caseID := strconv.Itoa(index)
-	if value, ok := source["item_id"]; ok { caseID = fmt.Sprint(value) }
-	if value, ok := source["case_id"]; ok { caseID = fmt.Sprint(value) }
+	if value, ok := source["item_id"]; ok {
+		caseID = fmt.Sprint(value)
+	}
+	if value, ok := source["case_id"]; ok {
+		caseID = fmt.Sprint(value)
+	}
 	return out, caseID
 }
 
