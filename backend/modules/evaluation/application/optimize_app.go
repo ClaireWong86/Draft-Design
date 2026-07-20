@@ -243,6 +243,11 @@ func (a *OptimizeApplication) processTask(ctx context.Context, taskID int64) {
 		_ = a.repo.MarkCancelled(ctx, taskID)
 		return
 	}
+	_ = a.repo.UpdateProgress(ctx, taskID, 60)
+	if err := a.executeCandidate(ctx, record, out); err != nil {
+		_ = a.repo.Fail(ctx, taskID, err.Error())
+		return
+	}
 	_ = a.repo.UpdateProgress(ctx, taskID, 80)
 	resultJSON, err := buildOptimizeResult(record, out)
 	if err != nil {
@@ -250,6 +255,39 @@ func (a *OptimizeApplication) processTask(ctx context.Context, taskID int64) {
 		return
 	}
 	_ = a.repo.Complete(ctx, taskID, resultJSON)
+}
+
+// executeCandidate performs a real temporary execution using the generated
+// candidate messages. It deliberately does not create a Prompt version. The
+// per-case input/evaluator loop is layered on top of this adapter next.
+func (a *OptimizeApplication) executeCandidate(ctx context.Context, task *entity.OptimizeTaskRecord, out *optimizerOutput) error {
+	var snapshot optimize.OptimizePromptSnapshot
+	if err := json.Unmarshal([]byte(task.BaselinePromptJSON), &snapshot); err != nil {
+		return fmt.Errorf("decode candidate snapshot: %w", err)
+	}
+	setOptimizedInstruction(&snapshot, out.OptimizedPrompt)
+	messages, err := convertCandidateMessages(snapshot.Messages)
+	if err != nil {
+		return fmt.Errorf("convert candidate messages: %w", err)
+	}
+	if len(messages) == 0 {
+		return errors.New("candidate prompt has no messages")
+	}
+	modelID := task.OptimizerModelID
+	maxTokens := int32(4096)
+	temperature := 0.2
+	reply, err := a.llm.Call(ctx, &entity.LLMCallParam{
+		SpaceID: task.WorkspaceID, EvaluatorID: fmt.Sprintf("optimize_candidate:%d", task.ID),
+		Scenario: entity.ScenarioEvaluator, Messages: messages,
+		ModelConfig: &entity.ModelConfig{ModelID: &modelID, MaxTokens: &maxTokens, Temperature: &temperature},
+	})
+	if err != nil {
+		return fmt.Errorf("execute candidate: %w", err)
+	}
+	if reply == nil || reply.Content == nil || strings.TrimSpace(*reply.Content) == "" {
+		return errors.New("candidate execution returned empty output")
+	}
+	return nil
 }
 
 func (a *OptimizeApplication) generateCandidate(ctx context.Context, task *entity.OptimizeTaskRecord) (*optimizerOutput, error) {
