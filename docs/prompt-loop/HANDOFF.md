@@ -1,13 +1,13 @@
 # Prompt Loop — AI 交接文档（HANDOFF）
 
 > 给下一个 AI 编程工具 / 工程师：先读本文件，再按需深入 PRD/TRD/代码。  
-> 更新时间：2026-07-17（UTC+8）
+> 更新时间：2026-07-17（UTC+8，OptimizeTask 后端、Worker、优化模型选择与真实前端客户端）
 
 ---
 
 ## 1. 一句话现状
 
-Prompt Loop（Coze Loop fork）本地栈可跑；**智能优化**已交付 **PRD + TRD + Prompt 开发页 Mock UI**（入口位置对齐商业版），**尚未接真实实验/评测集 API 与后端 Worker**。与扣子罗盘商业版仍有明显产品差距（见 §6）。
+Prompt Loop（Coze Loop fork）本地栈可跑；Prompt 详情已形成**编排、观测、评测、智能优化**四工作区。智能优化已接通 OptimizeTask IDL、MySQL、真实 API、可选优化模型和可恢复异步 Worker；前端默认使用真实客户端。当前 Worker 完成诊断与候选生成，候选执行/评估器重评/多轮选优仍待实现。
 
 ---
 
@@ -63,6 +63,7 @@ cd frontend/apps/cozeloop && npm run dev   # → :8090，可能只绑 [::1]
 - App panic 缺 RMQ topic：`trace_ingestion_event` 需存在。
 - `:8090` 可能只 listen IPv6（`[::1]`），浏览器 `localhost` 一般可用。
 - 见最新 UI：用 **8090**；或 rebuild `@cozeloop/community-base` → `coze-loop:local-fix` → `restart-app` 同步 nginx volume。
+- 新增后端路由或数据表后，仅重启旧容器不会生效：先构建 `coze-loop:local-fix`、执行对应 `patch-sql`，再强制重建 app 容器；2026-07-17 已完成 `optimize_task` 迁移并部署包含 OptimizeTask 路由的本地镜像。
 
 ---
 
@@ -77,16 +78,19 @@ cd frontend/apps/cozeloop && npm run dev   # → :8090，可能只绑 [::1]
 
 算法结论（务必读 TRD）：商业版**未开源**内部算法；本地定义为「诊断 → Meta-LLM 改写 → 同样本再评估 → 选优」循环；效果/性价比映射 N/T/K。勿声称二进制复刻商业黑盒。
 
-### 前端代码（MVP Mock）
+### 前端代码
 
 目录：
 
 ```text
 frontend/packages/loop-pages/prompt-pages/src/components/smart-optimize/
   header-dropdown.tsx      # Header 下拉两路径
-  wizard.tsx               # 多步向导（手填 ID / Mock）
-  task-panel.tsx           # Tab：任务列表 + 报告 + 采纳
-  mock-client.ts           # localStorage Mock OptimizeTask
+  create-confirm-modal.tsx # Prompt Header 选择实验 + 确认版本
+  wizard.tsx               # 独立页面向导（真实实验、Schema 映射、优化模型、真实任务）
+  experiment-case-selector.tsx # BatchGetExperimentResult、分页/多选/多模态预览
+  task-panel.tsx           # Tab：搜索/状态筛选/业务列 + 报告 + 采纳
+  client.ts                # StoneEvaluationApi 真实 OptimizeTask 客户端
+  mock-client.ts           # 仅保留的 localStorage 演示夹具，默认不使用
   types.ts
   render-header-buttons.tsx
   index.ts
@@ -96,11 +100,35 @@ frontend/packages/loop-pages/prompt-pages/src/components/smart-optimize/
 
 - `renderHeaderButtons`：插在 **版本记录** 与 **提交新版** 之间  
 - `extraTabs`：`smart_optimize` Tab  
-- 采纳：`usePromptStore.setMessageList` 写草稿 + Toast，**未**自动打开提交弹窗  
+- Prompt 详情现有 `编排 / 观测 / 评测 / 智能优化` 四 Tab；观测/评测当前是带 Prompt 上下文的模块入口，尚未内嵌完整列表
+- 创建路由：`pe/prompts/:promptID/optimize/create`；确认后进入独立两步全页，完成后回到 `?tab=smart_optimize`
+- 采纳：完整 `messages[]` 写草稿 + Toast，保留角色、Few-shot 与多模态 parts；**未**自动打开提交弹窗
+
+实验详情入口：`evaluate-pages/src/components/experiment-smart-optimize-entry.tsx`，通过 `ExperimentDetailPage.renderExtraButtons` 注入；成功的 Prompt 实验确认当前实验、Prompt 与版本后导航到同一创建路由，不再叠加 Wizard 弹窗。
+
+多模态边界：当前支持把图片/视频作为优化证据输入，并完整保留消息 `parts[]`；优化器改写 Prompt 文本与结构，**不**自动裁剪、放大、画 SoM 标记或替换图片。详见 TRD 6.3。
 
 接口占位：`@cozeloop/adapter-interfaces` → [prompt/index.ts](../../frontend/packages/loop-components/adapter-interfaces/src/prompt/index.ts)（`PromptAdapters` 类型已扩；实现暂未抽独立 `prompt-adapter` 包，因 rush update 策略受限）
 
 Guard：`pe.prompt.smart_optimize` 已定义，入口**未包** `<Guard>`（OSS 默认放行）。
+
+### 后端代码（本轮新增）
+
+```text
+idl/thrift/coze/loop/evaluation/coze.loop.evaluation.optimize.thrift
+backend/modules/evaluation/application/optimize_app.go
+backend/modules/evaluation/domain/entity/optimize_task.go
+backend/modules/evaluation/domain/repo/optimize_task.go
+backend/modules/evaluation/infra/repo/optimize/optimize_task.go
+backend/api/handler/coze/loop/apis/optimize_service.go
+release/deployment/docker-compose/bootstrap/mysql-init/{init-sql,patch-sql}/optimize_task.sql
+release/deployment/helm-chart/charts/app/bootstrap/init/mysql/init-sql/optimize_task.sql
+```
+
+- API：Create/List/Get/Cancel；报告随 Get/List 的 `result` 返回。
+- Worker：持久化后异步 claim，调用用户选择的 `optimizer_model_id`，生成诊断与候选，支持取消、失败记录、周期扫描、重启恢复和 stale-running 重排。
+- 前端 API Schema 已生成 `evaluationOptimize` 并合入 `StoneEvaluationApi`。
+- `OptimizeTaskResult` 的评分字段为 optional；当前没有执行重评时 UI 显示“候选已生成（待重评）”。
 
 商业参考文档：https://loop.coze.cn/open/docs/cozeloop/optimize-prompts-with-ai  
 
@@ -112,25 +140,26 @@ Guard：`pe.prompt.smart_optimize` 已定义，入口**未包** `<Guard>`（OSS 
 
 ### P0 — 产品流程
 
-1. **实验详情页也有「智能优化」入口**（评测模块目前为零）  
-2. **首屏弹窗对齐**：「新建智能优化」+ 紫底说明 + **下拉选择真实评测实验**（`ListExperiments`），不要手填 ID  
-3. **样本选择表**：接 `BatchGetExperimentResult`，10–500 条，校验成功实验 / 非满分 / reference 可映射  
-4. **字段映射**：接评测集 schema，复用实验创建 mapping UI  
-5. **后端 OptimizeTask + Worker**：按 TRD 算法；去掉仅 Mock 的闭环  
+1. **Worker 第二阶段**：按 case ID 加载真实 input/actual/reference/evaluator score，执行候选并复用评估器重评
+2. 多候选、多轮迭代、优化集/验证集拆分与增益停止条件
+3. 样本选择服务端过滤：非满分、评估器分数区间、跨多轮数据
+4. `reference_output` 根据 schema_key/显式映射识别，避免仅靠字段名启发式
+5. 评测集（Goodcase）路径接 `ListEvaluationSetVersions` / `ListEvaluationSetItems`
+6. 成本预算、重试次数、RocketMQ 多实例 Worker 与租约
 
 ### P1 — UI / 体验
 
-- 按钮星星图标；下拉项仪表盘 / 数据层图标  
+- 确认弹窗补实验状态/Prompt 目标兼容性过滤
 - 报告：分数分布、评估器列、回跳样本  
 - 采纳后打开「提交新版」流  
 - 包 `Guard`；任务创建前做 Jinja2 / 多模态变量 / String 变量校验  
 
 ### 建议下一迭代顺序
 
-1. 实验选择器 + 「新建智能优化」弹窗对齐截图  
-2. 实验详情页入口（当前实验预填）  
-3. 样本表 + 映射接真实 API  
-4. 后端 Worker；Mock 仅作 `USE_MOCK_OPTIMIZE=1` 开关  
+1. Worker 加载完整实验/评测集 case 证据
+2. 候选执行 → 原评估器重评 → 验证集复测 → 选优
+3. 加任务级预算、重试/租约并迁移 RocketMQ 多实例消费
+4. 报告补分布/评估器列，采纳后自动打开「提交新版」
 
 ---
 
@@ -150,7 +179,7 @@ Guard：`pe.prompt.smart_optimize` 已定义，入口**未包** `<Guard>`（OSS 
 ```text
 你在 Prompt Loop fork（Draft-Design）上工作。
 先读 docs/prompt-loop/HANDOFF.md，再读 prd/trd-smart-prompt-optimize.md。
-当前任务：缩小与扣子罗盘「智能优化」差距——优先做真实实验选择器 +「新建智能优化」弹窗，以及实验详情页入口。
+当前任务：继续实现 Worker 的候选执行、评估器重评和多轮选优；OptimizeTask API、持久化、第一阶段 Worker 与前端真实客户端已完成。
 前端热更新：http://localhost:8090 （后端 :8888 / Web :8082）。
 分支：feat/prompt-loop-multimodal-joybuild。不要提交 .local-migration/。
 ```
@@ -160,9 +189,32 @@ Guard：`pe.prompt.smart_optimize` 已定义，入口**未包** `<Guard>`（OSS 
 ## 8. 验证清单（切换前）
 
 - [x] PRD / TRD 在仓  
-- [x] Prompt 开发页 Header 下拉 + Tab（Mock）已推送  
+- [x] Prompt 开发页 Header 下拉 + 四工作区 Tab
 - [x] 栈可访问 8082=200、8888=pong（交接时）  
 - [x] 前端 dev 8090 可访问（交接时）  
-- [ ] 真实 ListExperiments / 样本表  
-- [ ] 实验页入口  
-- [ ] 后端 Worker  
+- [x] 真实 ListExperiments / BatchGetExperimentResult 样本表
+- [x] 实验页入口 + 当前实验/Prompt 版本回填
+- [x] 完整消息与多模态内容契约
+- [x] 确认弹窗 + 独立两步创建路由
+- [x] 智能优化任务台搜索、状态筛选和业务字段
+- [x] Prompt 四工作区与 URL Tab 状态同步
+- [x] OptimizeTask IDL / MySQL / Create-List-Get-Cancel API
+- [x] 可选优化模型 + 第一阶段诊断/候选 Worker + 取消/恢复
+- [x] 前端真实 OptimizeTask 客户端
+- [ ] 候选执行 / 原评估器重评 / 多轮验证选优
+
+### 本轮验证结果
+
+```bash
+# 后端：通过
+go test ./modules/evaluation/application \
+  ./modules/evaluation/infra/repo/optimize \
+  ./api/handler/coze/loop/apis \
+  ./api/router/coze/loop/apis
+
+# 前端：通过（0 error）
+cd frontend/packages/loop-base/api-schema && rushx lint
+cd frontend/packages/loop-pages/prompt-pages && rushx lint
+```
+
+IDL 已用项目锁定版本生成：Kitex `v0.13.1`、Hertz `v0.9.7`、ThriftGo `v0.4.1`，Wire `v0.6.0`。社区前端全量 `tsc -b` 仍被仓内既有的 `prompt-components-v2` SVG/CSS 与 `@/` alias 解析问题阻塞；筛选本轮目录后，仅剩同一既有 alias 问题，`smart-optimize` 组件本身无新增类型错误。

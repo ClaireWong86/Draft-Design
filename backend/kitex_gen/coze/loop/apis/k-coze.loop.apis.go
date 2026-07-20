@@ -17,6 +17,7 @@ import (
 	"github.com/coze-dev/coze-loop/backend/kitex_gen/coze/loop/evaluation/evaluator"
 	"github.com/coze-dev/coze-loop/backend/kitex_gen/coze/loop/evaluation/expt"
 	openapi0 "github.com/coze-dev/coze-loop/backend/kitex_gen/coze/loop/evaluation/openapi"
+	"github.com/coze-dev/coze-loop/backend/kitex_gen/coze/loop/evaluation/optimize"
 	"github.com/coze-dev/coze-loop/backend/kitex_gen/coze/loop/foundation/auth"
 	"github.com/coze-dev/coze-loop/backend/kitex_gen/coze/loop/foundation/authn"
 	"github.com/coze-dev/coze-loop/backend/kitex_gen/coze/loop/foundation/file"
@@ -44,6 +45,7 @@ var (
 	_ = evaluator.KitexUnusedProtection
 	_ = expt.KitexUnusedProtection
 	_ = openapi0.KitexUnusedProtection
+	_ = optimize.KitexUnusedProtection
 	_ = auth.KitexUnusedProtection
 	_ = authn.KitexUnusedProtection
 	_ = file.KitexUnusedProtection

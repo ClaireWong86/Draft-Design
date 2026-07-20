@@ -47,9 +47,15 @@ export interface CreateExperimentRequest {
   item_retry_num?: number,
   /** 试运行行数 */
   trial_run_item_count?: number,
+  enable_extract_trajectory?: boolean,
   /** 关联的智能评测会话ID */
   thread_id?: string,
   trigger_type?: expt.ExptTriggerType,
+  /** 通知配置 */
+  notification_conf?: expt.ExptNotificationConf,
+  ext?: {
+    [key: string | number]: string
+  },
   session?: common.Session,
 }
 export interface CreateExperimentResponse {
@@ -84,13 +90,18 @@ export interface SubmitExperimentRequest {
   item_retry_num?: number,
   /** 试运行行数 */
   trial_run_item_count?: number,
+  enable_extract_trajectory?: boolean,
+  trigger_type?: expt.ExptTriggerType,
+  time_range?: expt.TaskTimeRange,
   /**
    * 智能评测相关
    * 关联的智能评测会话ID
   */
   thread_id?: string,
-  trigger_type?: expt.ExptTriggerType,
-  time_range?: expt.TaskTimeRange,
+  /** 指定执行的评测集条目ID列表 */
+  item_ids?: string[],
+  /** 通知配置 */
+  notification_conf?: expt.ExptNotificationConf,
   ext?: {
     [key: string | number]: string
   },
@@ -123,6 +134,8 @@ export interface UpdateExperimentRequest {
   expt_id: string,
   name?: string,
   desc?: string,
+  /** 通知配置（可选更新） */
+  notification_conf?: expt.ExptNotificationConf,
 }
 export interface UpdateExperimentResponse {
   experiment?: expt.Experiment
@@ -284,9 +297,12 @@ export interface CreateExperimentTemplateRequest {
   default_evaluators_concur_num?: number,
   /** 调度配置（不在 ExptTemplate 结构中，保留在顶层） */
   schedule_cron?: string,
-  expt_source?: expt.ExptSource,
   /** 模板运行态信息（如是否开启定时触发）；创建时可只填 cron_activate */
   expt_info?: expt.ExptInfo,
+  enable_extract_trajectory?: boolean,
+  expt_source?: expt.ExptSource,
+  /** 通知配置 */
+  notification_conf?: expt.ExptNotificationConf,
   session?: common.Session,
 }
 export interface CreateExperimentTemplateResponse {
@@ -324,6 +340,11 @@ export interface UpdateExperimentTemplateRequest {
   /** 调度配置（不在 ExptTemplate 结构中，保留在顶层） */
   schedule_cron?: string,
   expt_info?: expt.ExptInfo,
+  enable_extract_trajectory?: boolean,
+  /** 实验来源（含 Scheduler 等配置）；nil 表示不修改，保留 DB 中已有值 */
+  expt_source?: expt.ExptSource,
+  /** 通知配置 */
+  notification_conf?: expt.ExptNotificationConf,
 }
 export interface UpdateExperimentTemplateResponse {
   experiment_template?: expt.ExptTemplate
@@ -348,9 +369,27 @@ export interface CheckExperimentTemplateNameRequest {
   workspace_id: string,
   name: string,
   template_id?: string,
+  /**
+   * 实验类型；在线/离线模板独立判重，未指定时由后端基于 template_id 推导，
+   * 若两者均未提供则跨类型查询以兼容旧调用
+  */
+  expt_type?: expt.ExptType,
 }
 export interface CheckExperimentTemplateNameResponse {
   is_available?: boolean
+}
+/** 根据 workspace_id 与实验模板 ID 提交实验（控制台/会话鉴权，逻辑对齐 SubmitExptFromTemplateOApi） */
+export interface SubmitExptFromTemplateRequest {
+  workspace_id: string,
+  template_id: string,
+  name?: string,
+  /** 通知配置（可选覆盖模板配置） */
+  notification_conf?: expt.ExptNotificationConf,
+  session?: common.Session,
+}
+export interface SubmitExptFromTemplateResponse {
+  experiment?: expt.Experiment,
+  run_id?: string,
 }
 export enum UpsertExptTurnResultFilterType {
   /** 标签状态 */
@@ -535,7 +574,7 @@ export const SubmitExperiment = /*#__PURE__*/createAPI<SubmitExperimentRequest, 
   "name": "SubmitExperiment",
   "reqType": "SubmitExperimentRequest",
   "reqMapping": {
-    "body": ["workspace_id", "eval_set_version_id", "target_version_id", "evaluator_version_ids", "name", "desc", "eval_set_id", "target_id", "visibility", "target_field_mapping", "evaluator_field_mapping", "item_concur_num", "evaluators_concur_num", "create_eval_target_param", "target_runtime_param", "expt_type", "max_alive_time", "source_type", "source_id", "evaluator_id_version_list", "enable_weighted_score", "expt_template_id", "item_retry_num", "trial_run_item_count", "thread_id", "trigger_type", "time_range", "ext", "session"]
+    "body": ["workspace_id", "eval_set_version_id", "target_version_id", "evaluator_version_ids", "name", "desc", "eval_set_id", "target_id", "visibility", "target_field_mapping", "evaluator_field_mapping", "item_concur_num", "evaluators_concur_num", "create_eval_target_param", "target_runtime_param", "expt_type", "max_alive_time", "source_type", "source_id", "evaluator_id_version_list", "enable_weighted_score", "expt_template_id", "item_retry_num", "trial_run_item_count", "enable_extract_trajectory", "trigger_type", "time_range", "thread_id", "item_ids", "notification_conf", "ext", "session"]
   },
   "resType": "SubmitExperimentResponse",
   "schemaRoot": "api://schemas/evaluation_coze.loop.evaluation.expt",
@@ -571,7 +610,7 @@ export const UpdateExperiment = /*#__PURE__*/createAPI<UpdateExperimentRequest, 
   "name": "UpdateExperiment",
   "reqType": "UpdateExperimentRequest",
   "reqMapping": {
-    "body": ["workspace_id", "name", "desc"],
+    "body": ["workspace_id", "name", "desc", "notification_conf"],
     "path": ["expt_id"]
   },
   "resType": "UpdateExperimentResponse",
@@ -874,7 +913,7 @@ export const CreateExperimentTemplate = /*#__PURE__*/createAPI<CreateExperimentT
   "name": "CreateExperimentTemplate",
   "reqType": "CreateExperimentTemplateRequest",
   "reqMapping": {
-    "body": ["workspace_id", "meta", "triple_config", "field_mapping_config", "create_eval_target_param", "default_evaluators_concur_num", "schedule_cron", "expt_source", "expt_info", "session"]
+    "body": ["workspace_id", "meta", "triple_config", "field_mapping_config", "create_eval_target_param", "default_evaluators_concur_num", "schedule_cron", "expt_info", "enable_extract_trajectory", "expt_source", "notification_conf", "session"]
   },
   "resType": "CreateExperimentTemplateResponse",
   "schemaRoot": "api://schemas/evaluation_coze.loop.evaluation.expt",
@@ -910,7 +949,7 @@ export const UpdateExperimentTemplate = /*#__PURE__*/createAPI<UpdateExperimentT
   "name": "UpdateExperimentTemplate",
   "reqType": "UpdateExperimentTemplateRequest",
   "reqMapping": {
-    "body": ["workspace_id", "meta", "triple_config", "field_mapping_config", "create_eval_target_param", "default_evaluators_concur_num", "schedule_cron", "expt_info"],
+    "body": ["workspace_id", "meta", "triple_config", "field_mapping_config", "create_eval_target_param", "default_evaluators_concur_num", "schedule_cron", "expt_info", "enable_extract_trajectory", "expt_source", "notification_conf"],
     "path": ["template_id"]
   },
   "resType": "UpdateExperimentTemplateResponse",
@@ -949,7 +988,7 @@ export const CheckExperimentTemplateName = /*#__PURE__*/createAPI<CheckExperimen
   "name": "CheckExperimentTemplateName",
   "reqType": "CheckExperimentTemplateNameRequest",
   "reqMapping": {
-    "body": ["workspace_id", "name", "template_id"]
+    "body": ["workspace_id", "name", "template_id", "expt_type"]
   },
   "resType": "CheckExperimentTemplateNameResponse",
   "schemaRoot": "api://schemas/evaluation_coze.loop.evaluation.expt",

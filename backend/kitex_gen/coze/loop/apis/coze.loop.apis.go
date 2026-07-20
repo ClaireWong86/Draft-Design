@@ -11,6 +11,7 @@ import (
 	"github.com/coze-dev/coze-loop/backend/kitex_gen/coze/loop/evaluation/evaluator"
 	"github.com/coze-dev/coze-loop/backend/kitex_gen/coze/loop/evaluation/expt"
 	openapi0 "github.com/coze-dev/coze-loop/backend/kitex_gen/coze/loop/evaluation/openapi"
+	"github.com/coze-dev/coze-loop/backend/kitex_gen/coze/loop/evaluation/optimize"
 	"github.com/coze-dev/coze-loop/backend/kitex_gen/coze/loop/foundation/auth"
 	"github.com/coze-dev/coze-loop/backend/kitex_gen/coze/loop/foundation/authn"
 	"github.com/coze-dev/coze-loop/backend/kitex_gen/coze/loop/foundation/file"
@@ -157,6 +158,32 @@ func NewEvalOpenAPIServiceClientProtocol(t thrift.TTransport, iprot thrift.TProt
 func NewEvalOpenAPIServiceClient(c thrift.TClient) *EvalOpenAPIServiceClient {
 	return &EvalOpenAPIServiceClient{
 		EvaluationOpenAPIServiceClient: openapi0.NewEvaluationOpenAPIServiceClient(c),
+	}
+}
+
+type OptimizeService interface {
+	optimize.OptimizeService
+}
+
+type OptimizeServiceClient struct {
+	*optimize.OptimizeServiceClient
+}
+
+func NewOptimizeServiceClientFactory(t thrift.TTransport, f thrift.TProtocolFactory) *OptimizeServiceClient {
+	return &OptimizeServiceClient{
+		OptimizeServiceClient: optimize.NewOptimizeServiceClientFactory(t, f),
+	}
+}
+
+func NewOptimizeServiceClientProtocol(t thrift.TTransport, iprot thrift.TProtocol, oprot thrift.TProtocol) *OptimizeServiceClient {
+	return &OptimizeServiceClient{
+		OptimizeServiceClient: optimize.NewOptimizeServiceClientProtocol(t, iprot, oprot),
+	}
+}
+
+func NewOptimizeServiceClient(c thrift.TClient) *OptimizeServiceClient {
+	return &OptimizeServiceClient{
+		OptimizeServiceClient: optimize.NewOptimizeServiceClient(c),
 	}
 }
 
@@ -696,6 +723,15 @@ type EvalOpenAPIServiceProcessor struct {
 
 func NewEvalOpenAPIServiceProcessor(handler EvalOpenAPIService) *EvalOpenAPIServiceProcessor {
 	self := &EvalOpenAPIServiceProcessor{openapi0.NewEvaluationOpenAPIServiceProcessor(handler)}
+	return self
+}
+
+type OptimizeServiceProcessor struct {
+	*optimize.OptimizeServiceProcessor
+}
+
+func NewOptimizeServiceProcessor(handler OptimizeService) *OptimizeServiceProcessor {
+	self := &OptimizeServiceProcessor{optimize.NewOptimizeServiceProcessor(handler)}
 	return self
 }
 

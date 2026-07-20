@@ -51,6 +51,9 @@
       "path": "../../loop-components/biz-hooks/tsconfig.build.json"
     },
     {
+      "path": "../../loop-components/evaluate-components/tsconfig.build.json"
+    },
+    {
       "path": "../../loop-components/observation-adapter/tsconfig.build.json"
     },
     {

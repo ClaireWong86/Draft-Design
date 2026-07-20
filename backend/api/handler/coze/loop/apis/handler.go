@@ -26,6 +26,7 @@ import (
 	"github.com/coze-dev/coze-loop/backend/kitex_gen/coze/loop/evaluation/evaluator"
 	"github.com/coze-dev/coze-loop/backend/kitex_gen/coze/loop/evaluation/expt"
 	evalopen "github.com/coze-dev/coze-loop/backend/kitex_gen/coze/loop/evaluation/openapi"
+	"github.com/coze-dev/coze-loop/backend/kitex_gen/coze/loop/evaluation/optimize"
 	"github.com/coze-dev/coze-loop/backend/kitex_gen/coze/loop/foundation/auth"
 	"github.com/coze-dev/coze-loop/backend/kitex_gen/coze/loop/foundation/authn"
 	"github.com/coze-dev/coze-loop/backend/kitex_gen/coze/loop/foundation/file"
@@ -50,6 +51,7 @@ import (
 	"github.com/coze-dev/coze-loop/backend/loop_gen/coze/loop/evaluation/loevaluator"
 	"github.com/coze-dev/coze-loop/backend/loop_gen/coze/loop/evaluation/loexpt"
 	loevalopen "github.com/coze-dev/coze-loop/backend/loop_gen/coze/loop/evaluation/loopenapi"
+	"github.com/coze-dev/coze-loop/backend/loop_gen/coze/loop/evaluation/looptimize"
 	"github.com/coze-dev/coze-loop/backend/loop_gen/coze/loop/foundation/loauthn"
 	foundationlofile "github.com/coze-dev/coze-loop/backend/loop_gen/coze/loop/foundation/lofile"
 	foundationloopenapi "github.com/coze-dev/coze-loop/backend/loop_gen/coze/loop/foundation/loopenapi"
@@ -91,6 +93,7 @@ type EvaluationHandler struct {
 	evaluation.EvaluationSetService
 	evaluation.EvalTargetService
 	evaluation.EvalOpenAPIService
+	optimize.OptimizeService
 }
 
 type FoundationHandler struct {
@@ -132,6 +135,7 @@ func NewEvaluationHandler(
 	evaluationSetApp evaluation.EvaluationSetService,
 	evalTargetService evaluation.EvalTargetService,
 	evalOpenAPIApp evaluation.EvalOpenAPIService,
+	optimizeApp optimize.OptimizeService,
 ) *EvaluationHandler {
 	h := &EvaluationHandler{
 		EvaluatorService:       evaluatorApp,
@@ -139,12 +143,14 @@ func NewEvaluationHandler(
 		EvaluationSetService:   evaluationSetApp,
 		EvalTargetService:      evalTargetService,
 		EvalOpenAPIService:     evalOpenAPIApp,
+		OptimizeService:        optimizeApp,
 	}
 	bindLocalCallClient(expt.ExperimentService(h), &localExptSvc, loexpt.NewLocalExperimentService)
 	bindLocalCallClient(evaluator.EvaluatorService(h), &localEvaluatorSvc, loevaluator.NewLocalEvaluatorService)
 	bindLocalCallClient(eval_set.EvaluationSetService(h), &localEvalSetSvc, loeval_set.NewLocalEvaluationSetService)
 	bindLocalCallClient(eval_target.EvalTargetService(h), &localEvalTargetSvc, loeval_target.NewLocalEvalTargetService)
 	bindLocalCallClient(evalopen.EvaluationOpenAPIService(h), &localEvalOpenAPIClient, loevalopen.NewLocalEvaluationOpenAPIService)
+	bindLocalCallClient(optimize.OptimizeService(h), &localOptimizeSvc, looptimize.NewLocalOptimizeService)
 	return h
 }
 

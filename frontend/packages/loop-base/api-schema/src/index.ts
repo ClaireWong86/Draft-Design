@@ -11,6 +11,7 @@ import {
   evaluationEvalTarget,
   evaluationEvaluator,
   evaluationExpt,
+  evaluationOptimize,
   dataDataset,
   llmManage,
   foundationUpload,
@@ -27,6 +28,7 @@ export const StoneEvaluationApi = {
   ...evaluationEvalTarget,
   ...evaluationEvaluator,
   ...evaluationExpt,
+  ...evaluationOptimize,
 };
 
 export const DataApi = {

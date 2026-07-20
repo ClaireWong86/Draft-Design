@@ -27,6 +27,7 @@ const config = [
         './evaluation/coze.loop.evaluation.eval_target.thrift',
       evaluationEvaluator: './evaluation/coze.loop.evaluation.evaluator.thrift',
       evaluationExpt: './evaluation/coze.loop.evaluation.expt.thrift',
+      evaluationOptimize: './evaluation/coze.loop.evaluation.optimize.thrift',
       dataDataset: './data/coze.loop.data.dataset.thrift',
       dateTag: './data/coze.loop.data.tag.thrift',
       llmManage: './llm/coze.loop.llm.manage.thrift',

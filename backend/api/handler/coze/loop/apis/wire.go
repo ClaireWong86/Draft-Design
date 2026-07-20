@@ -40,7 +40,9 @@ import (
 	conf2 "github.com/coze-dev/coze-loop/backend/modules/data/infra/conf"
 	"github.com/coze-dev/coze-loop/backend/modules/data/infra/rpc/foundation"
 	evaluationapp "github.com/coze-dev/coze-loop/backend/modules/evaluation/application"
+	optimizerepo "github.com/coze-dev/coze-loop/backend/modules/evaluation/infra/repo/optimize"
 	"github.com/coze-dev/coze-loop/backend/modules/evaluation/infra/rpc/data"
+	llmrpc "github.com/coze-dev/coze-loop/backend/modules/evaluation/infra/rpc/llm"
 	"github.com/coze-dev/coze-loop/backend/modules/evaluation/infra/rpc/prompt"
 	"github.com/coze-dev/coze-loop/backend/modules/evaluation/infra/rpc/schedule"
 	"github.com/coze-dev/coze-loop/backend/modules/evaluation/infra/rpc/trajectory"
@@ -91,6 +93,9 @@ var (
 		evaluationapp.InitEvaluationSetApplication,
 		evaluationapp.InitEvalTargetApplication,
 		evaluationapp.InitEvalOpenAPIApplication,
+		evaluationapp.NewOptimizeApplication,
+		optimizerepo.NewOptimizeTaskRepo,
+		llmrpc.NewLLMRPCProvider,
 		provideTaskClient,
 	)
 	dataSet = wire.NewSet(

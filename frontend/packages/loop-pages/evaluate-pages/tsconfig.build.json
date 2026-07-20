@@ -30,6 +30,9 @@
       "path": "../../../config/vitest-config/tsconfig.build.json"
     },
     {
+      "path": "../../loop-base/api-schema/tsconfig.build.json"
+    },
+    {
       "path": "../../loop-base/bot-typings/tsconfig.build.json"
     },
     {
@@ -46,6 +49,9 @@
     },
     {
       "path": "../../loop-modules/evaluate/tsconfig.build.json"
+    },
+    {
+      "path": "../prompt-pages/tsconfig.build.json"
     }
   ]
 }

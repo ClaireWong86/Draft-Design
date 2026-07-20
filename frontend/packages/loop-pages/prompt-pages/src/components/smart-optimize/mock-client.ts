@@ -4,11 +4,12 @@
 /* eslint-disable security/detect-object-injection -- indexed localStorage tasks */
 import {
   type CreateOptimizeTaskRequest,
+  type OptimizePromptSnapshot,
   type OptimizeTask,
   type OptimizeTaskClient,
 } from './types';
 
-const STORAGE_KEY = 'prompt_loop_optimize_tasks_v1';
+const STORAGE_KEY = 'prompt_loop_optimize_tasks_v2';
 const RADIX = 36;
 const ID_SLICE_START = 2;
 const ID_SLICE_END = 8;
@@ -43,17 +44,40 @@ function sleep(ms: number) {
   return new Promise(resolve => setTimeout(resolve, ms));
 }
 
-function buildMockResult(baselinePrompt?: string): OptimizeTask['result'] {
-  const before = baselinePrompt?.trim() || '## Task Goal\nDetect tire defects.';
-  const after = `${before}
+function appendOptimizationNotes(
+  snapshot: OptimizePromptSnapshot,
+): OptimizePromptSnapshot {
+  const messages = snapshot.messages.map(message => ({
+    ...message,
+    parts: message.parts?.map(part => ({ ...part })),
+  }));
+  const targetIndex = Math.max(
+    0,
+    messages.findIndex(message => message.role === 'system'),
+  );
+  const target = messages[targetIndex] ?? { role: 'system' as const };
+  const content =
+    target.content?.trim() || '## Task Goal\nDetect tire defects.';
+  messages[targetIndex] = {
+    ...target,
+    content: `${content}
 
 ## Optimization Notes (Mock)
 - Emphasize evidence grounding for each defect.
 - Require JSON fields: defects, position, evidence, severity, confidence.
-- Prefer conservative severity when confidence < 0.6.`;
+- Prefer conservative severity when confidence < 0.6.`,
+  };
+
+  return { ...snapshot, messages };
+}
+
+function buildMockResult(
+  baselinePrompt: OptimizePromptSnapshot,
+): OptimizeTask['result'] {
+  const after = appendOptimizationNotes(baselinePrompt);
 
   return {
-    before_prompt: before,
+    before_prompt: baselinePrompt,
     after_prompt: after,
     before_score: 0.62,
     after_score: 0.81,
@@ -113,7 +137,9 @@ async function simulateProgress(taskId: string) {
       status: progress >= DONE_PERCENT ? 'succeeded' : 'running',
       updated_at: Date.now(),
       result:
-        progress >= DONE_PERCENT ? buildMockResult(baseline) : current.result,
+        progress >= DONE_PERCENT && baseline
+          ? buildMockResult(baseline)
+          : current.result,
     };
     tasks[idx] = next;
     saveTasks(tasks);
@@ -125,22 +151,22 @@ export const mockOptimizeTaskClient: OptimizeTaskClient = {
     const now = Date.now();
     const task: OptimizeTask = {
       id: createId(),
+      name: req.name || `智能优化任务-${new Date(now).toLocaleString()}`,
       workspace_id: req.workspace_id,
       prompt_id: req.prompt_id,
       prompt_version: req.prompt_version,
-      source_type: req.source_type,
-      source_id: req.source_id,
-      source_name: req.source_name,
+      source: req.source,
       case_item_ids: req.case_item_ids,
       mapping: req.mapping,
       mode_score: req.mode_score,
+      optimizer_model_id: req.optimizer_model_id,
       status: 'queued',
       progress: 0,
       created_at: now,
       updated_at: now,
       result: {
-        before_prompt: req.baseline_prompt || '',
-        after_prompt: '',
+        before_prompt: req.baseline_prompt,
+        after_prompt: { ...req.baseline_prompt, messages: [] },
         before_score: 0,
         after_score: 0,
         score_distribution: { before: [], after: [] },
@@ -168,7 +194,7 @@ export const mockOptimizeTaskClient: OptimizeTaskClient = {
     return Promise.resolve(loadTasks().find(t => t.id === taskId));
   },
 
-  cancelTask(taskId: string) {
+  cancelTask(taskId: string, _workspaceId: string) {
     const tasks = loadTasks();
     const idx = tasks.findIndex(t => t.id === taskId);
     if (idx < 0) {
@@ -186,7 +212,7 @@ export const mockOptimizeTaskClient: OptimizeTaskClient = {
     return Promise.resolve();
   },
 
-  async adoptTask(taskId: string) {
+  async adoptTask(taskId: string, _workspaceId: string) {
     const task = await this.getTask(taskId);
     if (!task?.result?.after_prompt) {
       throw new Error('任务尚无可用优化结果');

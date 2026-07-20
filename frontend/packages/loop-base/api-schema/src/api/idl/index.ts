@@ -10,6 +10,7 @@ export * as evaluationEvalSet from './evaluation/coze.loop.evaluation.eval_set';
 export * as evaluationEvalTarget from './evaluation/coze.loop.evaluation.eval_target';
 export * as evaluationEvaluator from './evaluation/coze.loop.evaluation.evaluator';
 export * as evaluationExpt from './evaluation/coze.loop.evaluation.expt';
+export * as evaluationOptimize from './evaluation/coze.loop.evaluation.optimize';
 export * as dataDataset from './data/coze.loop.data.dataset';
 export * as dateTag from './data/coze.loop.data.tag';
 export * as llmManage from './llm/coze.loop.llm.manage';

@@ -1,7 +1,8 @@
 // Copyright (c) 2025 coze-dev Authors
 // SPDX-License-Identifier: Apache-2.0
-import { useParams } from 'react-router-dom';
-import { useMemo, useState } from 'react';
+/* eslint-disable @coze-arch/max-line-per-function -- composes Prompt workspace integrations */
+import { useParams, useSearchParams } from 'react-router-dom';
+import { useEffect, useMemo, useState } from 'react';
 
 import {
   PromptDevelop,
@@ -22,10 +23,10 @@ import { type Prompt } from '@cozeloop/api-schema/prompt';
 import { TraceTab } from '@/components/trace-tabs';
 import {
   renderSmartOptimizeHeaderButtons,
+  SmartOptimizeCreateConfirmModal,
   SmartOptimizeTaskPanel,
-  SmartOptimizeWizard,
-  type OptimizeSourceType,
 } from '@/components/smart-optimize';
+import { PromptWorkspacePanel } from '@/components/prompt-workspace-panel';
 import { ExecuteHistoryPanel } from '@/components/execute-history-panel';
 
 export default function PromptDevelopPage() {
@@ -34,12 +35,11 @@ export default function PromptDevelopPage() {
     promptID: string;
   }>();
   const { spaceID } = useSpace();
+  const [searchParams, setSearchParams] = useSearchParams();
 
   const [promptInfo, setPromptInfo] = useState<Prompt>();
-  const [activeTab, setActiveTab] = useState('dev');
-  const [wizardSourceType, setWizardSourceType] =
-    useState<OptimizeSourceType>('experiment');
-  const wizardModal = useModalData();
+  const [activeTab, setActiveTab] = useState(searchParams.get('tab') || 'dev');
+  const [confirmVisible, setConfirmVisible] = useState(false);
   const traceHistoryPannel = useModalData();
   const traceLogPannel = useModalData<string>();
   const navigate = useNavigateModule();
@@ -51,8 +51,30 @@ export default function PromptDevelopPage() {
 
   const service = useModelList(spaceID);
 
+  useEffect(() => {
+    const requestedTab = searchParams.get('tab');
+    if (requestedTab) {
+      setActiveTab(requestedTab);
+    }
+  }, [searchParams]);
+
   const extraTabs = useMemo(
     () => [
+      {
+        key: 'observation',
+        title: I18n.t('observation', '观测'),
+        children: (
+          <PromptWorkspacePanel
+            type="observation"
+            promptKey={promptInfo?.prompt_key}
+          />
+        ),
+      },
+      {
+        key: 'evaluation',
+        title: I18n.t('evaluation', '评测'),
+        children: <PromptWorkspacePanel type="evaluation" />,
+      },
       {
         key: 'smart_optimize',
         title: I18n.t('smart_optimize', '智能优化'),
@@ -65,8 +87,21 @@ export default function PromptDevelopPage() {
         ),
       },
     ],
-    [promptID, spaceID],
+    [promptID, promptInfo?.prompt_key, spaceID],
   );
+
+  const handleTabChange = (tabKey: string) => {
+    setActiveTab(tabKey);
+    setSearchParams(current => {
+      const next = new URLSearchParams(current);
+      if (tabKey === 'dev') {
+        next.delete('tab');
+      } else {
+        next.set('tab', tabKey);
+      }
+      return next;
+    });
+  };
 
   return (
     <>
@@ -112,24 +147,39 @@ export default function PromptDevelopPage() {
         }}
         hideSnippet={true}
         activeTab={activeTab}
-        tabsChange={setActiveTab}
+        tabsChange={handleTabChange}
         extraTabs={extraTabs}
         renderHeaderButtons={buttons =>
           renderSmartOptimizeHeaderButtons(buttons, {
             onOpenWizard: sourceType => {
-              setWizardSourceType(sourceType);
-              wizardModal.open();
+              if (sourceType === 'experiment') {
+                setConfirmVisible(true);
+                return;
+              }
+              navigate({
+                pathname: `pe/prompts/${promptID}/optimize/create`,
+                search: `?source=${sourceType}`,
+              });
             },
           })
         }
       />
-      <SmartOptimizeWizard
-        visible={wizardModal.visible}
-        sourceType={wizardSourceType}
+      <SmartOptimizeCreateConfirmModal
+        visible={confirmVisible}
         prompt={promptInfo}
-        spaceID={spaceID}
-        onClose={wizardModal.close}
-        onSubmitted={() => setActiveTab('smart_optimize')}
+        onCancel={() => setConfirmVisible(false)}
+        onConfirm={experimentID => {
+          const version =
+            promptInfo?.prompt_commit?.commit_info?.version ||
+            promptInfo?.prompt_basic?.latest_version ||
+            '';
+          navigate({
+            pathname: `pe/prompts/${promptID}/optimize/create`,
+            search: `?source=experiment&experiment_id=${encodeURIComponent(
+              experimentID,
+            )}&prompt_version=${encodeURIComponent(version)}`,
+          });
+        }}
       />
       <TraceTab
         displayType="drawer"

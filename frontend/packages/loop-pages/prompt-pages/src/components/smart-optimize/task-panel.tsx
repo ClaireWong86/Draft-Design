@@ -3,23 +3,28 @@
 /* eslint-disable @coze-arch/max-line-per-function -- task list + report modal */
 /* eslint-disable @typescript-eslint/no-magic-numbers -- poll interval / score digits */
 /* eslint-disable security/detect-object-injection -- status tag map lookup */
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 
 import { usePromptStore } from '@cozeloop/prompt-components-v2';
 import { I18n } from '@cozeloop/i18n-adapter';
-import { Role } from '@cozeloop/api-schema/prompt';
 import {
   Button,
+  Input,
   Modal,
   Progress,
+  Select,
   Table,
   Tag,
   Toast,
   Typography,
 } from '@coze-arch/coze-design';
 
-import { type OptimizeTask, type OptimizeTaskStatus } from './types';
-import { mockOptimizeTaskClient } from './mock-client';
+import {
+  type OptimizePromptSnapshot,
+  type OptimizeTask,
+  type OptimizeTaskStatus,
+} from './types';
+import { optimizeTaskClient } from './client';
 
 const STATUS_TAG: Record<OptimizeTaskStatus, { color: string; label: string }> =
   {
@@ -30,30 +35,13 @@ const STATUS_TAG: Record<OptimizeTaskStatus, { color: string; label: string }> =
     cancelled: { color: 'orange', label: '已终止' },
   };
 
-function applyAdoptedPrompt(afterPrompt: string) {
-  const { messageList, setMessageList } = usePromptStore.getState();
-  const list = messageList || [];
-  if (!list.length) {
-    setMessageList([
-      {
-        key: 'adopt-system',
-        role: Role.System,
-        content: afterPrompt,
-      },
-    ]);
-    return;
-  }
-  const systemIdx = list.findIndex(m => m.role === Role.System);
-  const targetIdx = systemIdx >= 0 ? systemIdx : 0;
+function applyAdoptedPrompt(afterPrompt: OptimizePromptSnapshot) {
+  const { setMessageList } = usePromptStore.getState();
   setMessageList(
-    list.map((m, i) =>
-      i === targetIdx
-        ? {
-            ...m,
-            content: afterPrompt,
-          }
-        : m,
-    ),
+    afterPrompt.messages.map((message, index) => ({
+      ...message,
+      key: message.metadata?.key || `optimized-message-${index}`,
+    })),
   );
 }
 
@@ -69,6 +57,28 @@ export function SmartOptimizeTaskPanel({
   const [tasks, setTasks] = useState<OptimizeTask[]>([]);
   const [loading, setLoading] = useState(false);
   const [reportTask, setReportTask] = useState<OptimizeTask | undefined>();
+  const [keyword, setKeyword] = useState('');
+  const [filterStatus, setFilterStatus] = useState<OptimizeTaskStatus | 'all'>(
+    'all',
+  );
+
+  const filteredTasks = useMemo(() => {
+    const normalizedKeyword = keyword.trim().toLowerCase();
+    return tasks.filter(task => {
+      const sourceName =
+        task.source.type === 'experiment'
+          ? task.source.experiment_name || task.source.experiment_id
+          : task.source.eval_set_name || task.source.eval_set_version_id;
+      const matchesKeyword =
+        !normalizedKeyword ||
+        (task.name || task.id).toLowerCase().includes(normalizedKeyword) ||
+        sourceName.toLowerCase().includes(normalizedKeyword);
+      return (
+        matchesKeyword &&
+        (filterStatus === 'all' || task.status === filterStatus)
+      );
+    });
+  }, [filterStatus, keyword, tasks]);
 
   const refresh = useCallback(async () => {
     if (!promptID || !spaceID) {
@@ -76,7 +86,7 @@ export function SmartOptimizeTaskPanel({
     }
     setLoading(true);
     try {
-      const list = await mockOptimizeTaskClient.listTasks({
+      const list = await optimizeTaskClient.listTasks({
         workspace_id: spaceID,
         prompt_id: promptID,
       });
@@ -95,14 +105,23 @@ export function SmartOptimizeTaskPanel({
   }, [refresh]);
 
   const handleCancel = async (taskId: string) => {
-    await mockOptimizeTaskClient.cancelTask(taskId);
+    if (!spaceID) {
+      return;
+    }
+    await optimizeTaskClient.cancelTask(taskId, spaceID);
     Toast.info(I18n.t('smart_optimize_cancelled', '已终止任务'));
     void refresh();
   };
 
   const handleAdopt = async (task: OptimizeTask) => {
     try {
-      const { after_prompt } = await mockOptimizeTaskClient.adoptTask(task.id);
+      if (!spaceID) {
+        throw new Error('缺少空间上下文');
+      }
+      const { after_prompt } = await optimizeTaskClient.adoptTask(
+        task.id,
+        spaceID,
+      );
       applyAdoptedPrompt(after_prompt);
       Toast.success(
         I18n.t(
@@ -123,7 +142,7 @@ export function SmartOptimizeTaskPanel({
 
   return (
     <div className="h-full overflow-auto p-4">
-      <div className="mb-4 flex items-center justify-between">
+      <div className="mb-4 flex items-start justify-between">
         <div>
           <Typography.Title heading={5}>
             {I18n.t('smart_optimize_task_list', '智能优化任务')}
@@ -131,7 +150,7 @@ export function SmartOptimizeTaskPanel({
           <Typography.Text type="secondary" size="small">
             {I18n.t(
               'smart_optimize_task_list_hint',
-              '当前使用本地 Mock API；后端 OptimizeTask 就绪后可无缝切换。',
+              '任务由后端异步执行；完成后可查看诊断并采纳优化 Prompt。',
             )}
           </Typography.Text>
         </div>
@@ -140,9 +159,36 @@ export function SmartOptimizeTaskPanel({
         </Button>
       </div>
 
+      <div className="mb-4 flex items-center gap-3">
+        <Input
+          className="w-80"
+          value={keyword}
+          placeholder={I18n.t('smart_optimize_search_name', '搜索任务名称')}
+          onChange={value => setKeyword(String(value))}
+        />
+        <Select
+          className="w-48"
+          value={filterStatus}
+          optionList={[
+            { value: 'all', label: I18n.t('all_status', '全部状态') },
+            ...Object.entries(STATUS_TAG).map(([value, meta]) => ({
+              value,
+              label: meta.label,
+            })),
+          ]}
+          onChange={value =>
+            setFilterStatus((value || 'all') as OptimizeTaskStatus | 'all')
+          }
+        />
+        <Typography.Text type="secondary" size="small">
+          {I18n.t(
+            'smart_optimize_task_count',
+            `共 ${filteredTasks.length} 个任务`,
+          )}
+        </Typography.Text>
+      </div>
+
       <Table
-        dataSource={tasks}
-        rowKey="id"
         empty={
           <Typography.Text type="secondary">
             {I18n.t(
@@ -151,80 +197,113 @@ export function SmartOptimizeTaskPanel({
             )}
           </Typography.Text>
         }
-        columns={[
-          {
-            title: I18n.t('smart_optimize_col_id', '任务 ID'),
-            dataIndex: 'id',
-            width: 140,
-          },
-          {
-            title: I18n.t('smart_optimize_col_path', '路径'),
-            dataIndex: 'source_type',
-            width: 120,
-            render: (v: OptimizeTask['source_type']) =>
-              v === 'experiment'
-                ? I18n.t('smart_optimize_path_experiment', '评测实验')
-                : I18n.t('smart_optimize_path_eval_set', '优质评测集'),
-          },
-          {
-            title: I18n.t('smart_optimize_col_source', '数据源'),
-            dataIndex: 'source_name',
-            render: (_: unknown, row: OptimizeTask) =>
-              row.source_name || row.source_id,
-          },
-          {
-            title: I18n.t('smart_optimize_col_status', '状态'),
-            dataIndex: 'status',
-            width: 160,
-            render: (status: OptimizeTaskStatus, row: OptimizeTask) => {
-              const meta = STATUS_TAG[status];
-              return (
-                <div className="flex flex-col gap-1">
-                  <Tag color={meta.color as 'blue'} size="small">
-                    {meta.label}
-                  </Tag>
-                  {status === 'running' || status === 'queued' ? (
-                    <Progress percent={row.progress} size="small" />
+        tableProps={{
+          dataSource: filteredTasks,
+          rowKey: 'id',
+          columns: [
+            {
+              title: I18n.t('smart_optimize_col_name', '任务名称'),
+              dataIndex: 'name',
+              width: 220,
+              render: (name: string | undefined, row: OptimizeTask) =>
+                name || row.id,
+            },
+            {
+              title: I18n.t('smart_optimize_col_status', '状态'),
+              dataIndex: 'status',
+              width: 160,
+              render: (status: OptimizeTaskStatus, row: OptimizeTask) => {
+                const meta = STATUS_TAG[status];
+                return (
+                  <div className="flex flex-col gap-1">
+                    <Tag color={meta.color as 'blue'} size="small">
+                      {meta.label}
+                    </Tag>
+                    {status === 'running' || status === 'queued' ? (
+                      <Progress percent={row.progress} size="small" />
+                    ) : null}
+                  </div>
+                );
+              },
+            },
+            {
+              title: I18n.t('smart_optimize_col_case_count', '数据条数'),
+              width: 100,
+              render: (_: unknown, row: OptimizeTask) =>
+                row.case_item_ids.length,
+            },
+            {
+              title: I18n.t('smart_optimize_col_mode', '优化模式'),
+              width: 120,
+              render: (_: unknown, row: OptimizeTask) =>
+                row.mode_score >= 0.7
+                  ? I18n.t('smart_optimize_mode_quality', '效果优先')
+                  : row.mode_score <= 0.3
+                    ? I18n.t('smart_optimize_mode_cost', '性价比优先')
+                    : I18n.t('smart_optimize_mode_balanced', '均衡'),
+            },
+            {
+              title: I18n.t('smart_optimize_col_result', '优化结果'),
+              width: 140,
+              render: (_: unknown, row: OptimizeTask) =>
+                row.status === 'succeeded' &&
+                row.result &&
+                typeof row.result.before_score === 'number' &&
+                typeof row.result.after_score === 'number'
+                  ? `${row.result.before_score.toFixed(2)} → ${row.result.after_score.toFixed(2)}`
+                  : row.status === 'succeeded'
+                    ? I18n.t(
+                        'smart_optimize_candidate_ready',
+                        '候选已生成（待重评）',
+                      )
+                    : row.status === 'failed'
+                      ? row.error_msg || I18n.t('smart_optimize_failed', '失败')
+                      : '-',
+            },
+            {
+              title: I18n.t('smart_optimize_col_eval_set', '关联评测集'),
+              width: 160,
+              render: (_: unknown, row: OptimizeTask) =>
+                row.source.type === 'eval_set'
+                  ? row.source.eval_set_name || row.source.eval_set_version_id
+                  : '-',
+            },
+            {
+              title: I18n.t('smart_optimize_col_experiment', '关联评测实验'),
+              width: 180,
+              render: (_: unknown, row: OptimizeTask) =>
+                row.source.type === 'experiment'
+                  ? row.source.experiment_name || row.source.experiment_id
+                  : '-',
+            },
+            {
+              title: I18n.t('smart_optimize_col_actions', '操作'),
+              width: 200,
+              render: (_: unknown, row: OptimizeTask) => (
+                <div className="flex gap-2">
+                  {row.status === 'succeeded' ? (
+                    <Button
+                      size="small"
+                      color="brand"
+                      onClick={() => setReportTask(row)}
+                    >
+                      {I18n.t('smart_optimize_view_report', '报告')}
+                    </Button>
+                  ) : null}
+                  {row.status === 'queued' || row.status === 'running' ? (
+                    <Button
+                      size="small"
+                      type="tertiary"
+                      onClick={() => void handleCancel(row.id)}
+                    >
+                      {I18n.t('terminate', '终止')}
+                    </Button>
                   ) : null}
                 </div>
-              );
+              ),
             },
-          },
-          {
-            title: I18n.t('smart_optimize_col_score', '得分'),
-            width: 140,
-            render: (_: unknown, row: OptimizeTask) =>
-              row.result?.after_score
-                ? `${row.result.before_score.toFixed(2)} → ${row.result.after_score.toFixed(2)}`
-                : '-',
-          },
-          {
-            title: I18n.t('smart_optimize_col_actions', '操作'),
-            width: 200,
-            render: (_: unknown, row: OptimizeTask) => (
-              <div className="flex gap-2">
-                {row.status === 'succeeded' ? (
-                  <Button
-                    size="small"
-                    color="brand"
-                    onClick={() => setReportTask(row)}
-                  >
-                    {I18n.t('smart_optimize_view_report', '报告')}
-                  </Button>
-                ) : null}
-                {row.status === 'queued' || row.status === 'running' ? (
-                  <Button
-                    size="small"
-                    type="tertiary"
-                    onClick={() => void handleCancel(row.id)}
-                  >
-                    {I18n.t('terminate', '终止')}
-                  </Button>
-                ) : null}
-              </div>
-            ),
-          },
-        ]}
+          ],
+        }}
       />
 
       <Modal
@@ -248,11 +327,21 @@ export function SmartOptimizeTaskPanel({
       >
         {reportTask?.result ? (
           <div className="flex flex-col gap-4">
-            <Typography.Text>
-              {I18n.t('smart_optimize_score_delta', '综合得分')}：
-              {reportTask.result.before_score.toFixed(2)} →{' '}
-              {reportTask.result.after_score.toFixed(2)}
-            </Typography.Text>
+            {typeof reportTask.result.before_score === 'number' &&
+            typeof reportTask.result.after_score === 'number' ? (
+              <Typography.Text>
+                {I18n.t('smart_optimize_score_delta', '综合得分')}：
+                {reportTask.result.before_score.toFixed(2)} →{' '}
+                {reportTask.result.after_score.toFixed(2)}
+              </Typography.Text>
+            ) : (
+              <Typography.Text type="secondary">
+                {I18n.t(
+                  'smart_optimize_score_pending',
+                  '优化候选已生成，需通过评测实验完成效果重评。',
+                )}
+              </Typography.Text>
+            )}
             {reportTask.result.diagnosis?.failure_modes?.length ? (
               <div>
                 <Typography.Text strong>
@@ -273,7 +362,11 @@ export function SmartOptimizeTaskPanel({
                   {I18n.t('smart_optimize_before', '优化前')}
                 </Typography.Text>
                 <pre className="mt-1 max-h-64 overflow-auto whitespace-pre-wrap rounded bg-[var(--coz-mg-primary)] p-3 text-xs">
-                  {reportTask.result.before_prompt}
+                  {reportTask.result.before_prompt.messages
+                    .map(
+                      message => `[${message.role}] ${message.content || ''}`,
+                    )
+                    .join('\n\n')}
                 </pre>
               </div>
               <div>
@@ -281,28 +374,34 @@ export function SmartOptimizeTaskPanel({
                   {I18n.t('smart_optimize_after', '优化后')}
                 </Typography.Text>
                 <pre className="mt-1 max-h-64 overflow-auto whitespace-pre-wrap rounded bg-[var(--coz-mg-primary)] p-3 text-xs">
-                  {reportTask.result.after_prompt}
+                  {reportTask.result.after_prompt.messages
+                    .map(
+                      message => `[${message.role}] ${message.content || ''}`,
+                    )
+                    .join('\n\n')}
                 </pre>
               </div>
             </div>
             <Table
-              size="small"
-              pagination={false}
-              dataSource={reportTask.result.case_details}
-              rowKey="case_id"
-              columns={[
-                { title: 'Case', dataIndex: 'case_id', width: 100 },
-                {
-                  title: I18n.t('smart_optimize_before_score', '优化前分'),
-                  dataIndex: 'before_score',
-                  width: 90,
-                },
-                {
-                  title: I18n.t('smart_optimize_after_score', '优化后分'),
-                  dataIndex: 'after_score',
-                  width: 90,
-                },
-              ]}
+              tableProps={{
+                size: 'small',
+                pagination: false,
+                dataSource: reportTask.result.case_details,
+                rowKey: 'case_id',
+                columns: [
+                  { title: 'Case', dataIndex: 'case_id', width: 100 },
+                  {
+                    title: I18n.t('smart_optimize_before_score', '优化前分'),
+                    dataIndex: 'before_score',
+                    width: 90,
+                  },
+                  {
+                    title: I18n.t('smart_optimize_after_score', '优化后分'),
+                    dataIndex: 'after_score',
+                    width: 90,
+                  },
+                ],
+              }}
             />
           </div>
         ) : null}
