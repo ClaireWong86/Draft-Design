@@ -7,7 +7,7 @@
 
 ## 1. 一句话现状
 
-Prompt Loop（Coze Loop fork）本地栈可跑；Prompt 详情已形成**编排、观测、评测、智能优化**四工作区。智能优化已接通 OptimizeTask IDL、MySQL、真实 API、可选优化模型和可恢复异步 Worker；前端默认使用真实客户端。当前 Worker 完成诊断与候选生成，候选执行/评估器重评/多轮选优仍待实现。
+Prompt Loop（Coze Loop fork）本地栈可跑；Prompt 详情已形成**编排、观测、评测、智能优化**四工作区。智能优化已接通 OptimizeTask IDL、MySQL、真实 API、可选优化模型和可恢复异步 Worker；前端默认使用真实客户端。当前 Worker 已完成诊断、候选生成和一次临时候选执行；逐 case 执行、评估器重评、多轮选优仍待实现。
 
 ---
 
@@ -126,7 +126,7 @@ release/deployment/helm-chart/charts/app/bootstrap/init/mysql/init-sql/optimize_
 ```
 
 - API：Create/List/Get/Cancel；报告随 Get/List 的 `result` 返回。
-- Worker：持久化后异步 claim，调用用户选择的 `optimizer_model_id`，先按实验 ID 快照真实评测证据（input/actual/reference/evaluator result）再生成诊断与候选，支持取消、失败记录、周期扫描、重启恢复和 stale-running 重排。
+- Worker：持久化后异步 claim，调用用户选择的 `optimizer_model_id`，先按实验 ID 快照真实评测证据（input/actual/reference/evaluator result），生成候选并执行一次临时候选消息，支持取消、失败记录、周期扫描、重启恢复和 stale-running 重排。
 - 前端 API Schema 已生成 `evaluationOptimize` 并合入 `StoneEvaluationApi`。
 - `OptimizeTaskResult` 的评分字段为 optional；当前没有执行重评时 UI 显示“候选已生成（待重评）”。
 
@@ -140,7 +140,7 @@ release/deployment/helm-chart/charts/app/bootstrap/init/mysql/init-sql/optimize_
 
 ### P0 — 产品流程
 
-1. **Worker 第二阶段**：已接入实验结果证据快照；仍需按 case ID 精确裁剪，执行候选并复用评估器重评
+1. **Worker 第二阶段**：已接入证据快照、case 裁剪和一次临时候选执行；仍需逐 case 执行并复用评估器重评
 2. 多候选、多轮迭代、优化集/验证集拆分与增益停止条件
 3. 样本选择服务端过滤：非满分、评估器分数区间、跨多轮数据
 4. `reference_output` 根据 schema_key/显式映射识别，避免仅靠字段名启发式
@@ -204,7 +204,8 @@ release/deployment/helm-chart/charts/app/bootstrap/init/mysql/init-sql/optimize_
 - [x] 可选优化模型 + 第一阶段诊断/候选 Worker + 取消/恢复
 - [x] 前端真实 OptimizeTask 客户端
 - [x] 按可解析的 case ID 精确裁剪实验结果证据
-- [ ] 候选执行 / 原评估器重评 / 多轮验证选优
+- [x] 候选 Prompt 临时执行（单次校验）
+- [ ] 逐 case 候选执行 / 原评估器重评 / 多轮验证选优
 
 ### 本轮验证结果
 
