@@ -193,6 +193,27 @@ Prompt Header / Experiment Detail
 
 因此，MVP 是“**支持非文本证据的 Prompt 自动优化**”，还不是“自动联合优化图像和文本输入”。
 
+### 6.4 候选 Prompt 临时执行适配器（方案 1）
+
+候选 Prompt 不创建持久化 Prompt 版本，Worker 通过临时执行适配器直接调用模型：
+
+```text
+CandidateExecutionRequest
+  workspace_id
+  task_id
+  candidate_messages[]       # 完整 system/user/assistant/tool + parts
+  variable_values{}          # 当前 case 的变量值
+  model_config               # 任务选择的执行模型与参数
+
+CandidateExecutionResult
+  output_message             # 文本或多模态 parts
+  usage
+  latency
+  error
+```
+
+适配器必须保持候选消息的角色、顺序、Few-shot 和多模态 parts，不通过拼接用户输入的方式覆盖原 Prompt。实验来源的 case 输入由 Worker 按显式字段映射转换为 `variable_values`；无法解析映射时任务失败并记录原因。候选执行结果随后交给原评估器重评，禁止使用模型自评结果替代评估器分数。
+
 ## 7. 存储与异步（已实现）
 
 - MySQL `optimize_task` 保存不可变基线、映射、样本 ID、模型、状态与结果 JSON；SQL 已同步 Docker init/patch 与 Helm init。

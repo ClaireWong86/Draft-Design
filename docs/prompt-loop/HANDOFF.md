@@ -147,6 +147,8 @@ release/deployment/helm-chart/charts/app/bootstrap/init/mysql/init-sql/optimize_
 5. 评测集（Goodcase）路径接 `ListEvaluationSetVersions` / `ListEvaluationSetItems`
 6. 成本预算、重试次数、RocketMQ 多实例 Worker 与租约
 
+候选执行方案已确定为方案 1：通过临时执行适配器直接传入完整候选 `messages[]`、变量值和多模态 parts，不创建持久化 Prompt 版本；契约见 TRD 6.4。
+
 ### P1 — UI / 体验
 
 - 确认弹窗补实验状态/Prompt 目标兼容性过滤
