@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"strconv"
 	"strings"
 	"time"
 
@@ -15,6 +16,7 @@ import (
 	"github.com/coze-dev/coze-loop/backend/infra/middleware/session"
 	"github.com/coze-dev/coze-loop/backend/kitex_gen/base"
 	"github.com/coze-dev/coze-loop/backend/kitex_gen/coze/loop/evaluation/optimize"
+	"github.com/coze-dev/coze-loop/backend/kitex_gen/coze/loop/evaluation/experimentservice"
 	promptdto "github.com/coze-dev/coze-loop/backend/kitex_gen/coze/loop/prompt/domain/prompt"
 	"github.com/coze-dev/coze-loop/backend/modules/evaluation/domain/component/rpc"
 	"github.com/coze-dev/coze-loop/backend/modules/evaluation/domain/entity"
@@ -29,18 +31,20 @@ const (
 )
 
 type OptimizeApplication struct {
-	idgen idgen.IIDGenerator
-	repo  repo.IOptimizeTaskRepo
-	llm   rpc.ILLMProvider
-	queue chan int64
+	idgen       idgen.IIDGenerator
+	repo        repo.IOptimizeTaskRepo
+	llm         rpc.ILLMProvider
+	experiments experimentservice.ExperimentService
+	queue       chan int64
 }
 
-func NewOptimizeApplication(idGenerator idgen.IIDGenerator, taskRepo repo.IOptimizeTaskRepo, llm rpc.ILLMProvider) optimize.OptimizeService {
+func NewOptimizeApplication(idGenerator idgen.IIDGenerator, taskRepo repo.IOptimizeTaskRepo, llm rpc.ILLMProvider, experiments experimentservice.ExperimentService) optimize.OptimizeService {
 	app := &OptimizeApplication{
-		idgen: idGenerator,
-		repo:  taskRepo,
-		llm:   llm,
-		queue: make(chan int64, optimizeWorkerQueueSize),
+		idgen:       idGenerator,
+		repo:        taskRepo,
+		llm:         llm,
+		experiments: experiments,
+		queue:       make(chan int64, optimizeWorkerQueueSize),
 	}
 	go app.runWorker()
 	go app.resumeQueuedTasks()
@@ -249,6 +253,10 @@ func (a *OptimizeApplication) processTask(ctx context.Context, taskID int64) {
 }
 
 func (a *OptimizeApplication) generateCandidate(ctx context.Context, task *entity.OptimizeTaskRecord) (*optimizerOutput, error) {
+	evidence, err := a.loadEvidence(ctx, task)
+	if err != nil {
+		return nil, err
+	}
 	payload := map[string]any{
 		"baseline_prompt":   json.RawMessage(task.BaselinePromptJSON),
 		"field_mapping":     json.RawMessage(task.MappingJSON),
@@ -256,6 +264,7 @@ func (a *OptimizeApplication) generateCandidate(ctx context.Context, task *entit
 		"source_type":       task.SourceType,
 		"source_id":         task.SourceID,
 		"mode_score":        task.ModeScore,
+		"evidence":          evidence,
 	}
 	userJSON, err := json.Marshal(payload)
 	if err != nil {
@@ -289,6 +298,53 @@ func (a *OptimizeApplication) generateCandidate(ctx context.Context, task *entit
 		return nil, errors.New("optimizer output missing optimized_prompt")
 	}
 	return &out, nil
+}
+
+// loadEvidence snapshots the selected experiment results before the optimizer
+// is called. This keeps the worker deterministic even if the experiment report
+// changes while a task is running, and gives the meta-model actual/reference
+// outputs and evaluator scores instead of only case IDs.
+func (a *OptimizeApplication) loadEvidence(ctx context.Context, task *entity.OptimizeTaskRecord) (any, error) {
+	if task.SourceType != string(optimize.OptimizeSourceTypeExperiment) || a.experiments == nil {
+		return map[string]any{"source_type": task.SourceType, "case_item_ids": json.RawMessage(task.CaseItemIDsJSON)}, nil
+	}
+	pageSize := int32(500)
+	pageNumber := int32(1)
+	useAccelerator := false
+	fullTrajectory := false
+	resp, err := a.experiments.BatchGetExperimentResult_(ctx, &experimentservice.BatchGetExperimentResultRequest{
+		WorkspaceID:     task.WorkspaceID,
+		ExperimentIds:   []int64{task.SourceID},
+		PageNumber:      &pageNumber,
+		PageSize:        &pageSize,
+		UseAccelerator:  &useAccelerator,
+		FullTrajectory:  &fullTrajectory,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("load experiment evidence: %w", err)
+	}
+	selected := make(map[int64]struct{})
+	var caseIDs []string
+	if err := json.Unmarshal([]byte(task.CaseItemIDsJSON), &caseIDs); err == nil {
+		for _, rawID := range caseIDs {
+			if id, parseErr := strconv.ParseInt(rawID, 10, 64); parseErr == nil {
+				selected[id] = struct{}{}
+			}
+		}
+	}
+	if len(selected) == 0 || resp == nil {
+		return resp, nil
+	}
+	filtered := resp.ItemResults[:0]
+	for _, item := range resp.ItemResults {
+		if item != nil {
+			if _, ok := selected[item.GetItemID()]; ok {
+				filtered = append(filtered, item)
+			}
+		}
+	}
+	resp.ItemResults = filtered
+	return resp, nil
 }
 
 func buildOptimizeResult(record *entity.OptimizeTaskRecord, out *optimizerOutput) (string, error) {
