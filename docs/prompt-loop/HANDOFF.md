@@ -181,7 +181,7 @@ release/deployment/helm-chart/charts/app/bootstrap/init/mysql/init-sql/optimize_
 ```text
 你在 Prompt Loop fork（Draft-Design）上工作。
 先读 docs/prompt-loop/HANDOFF.md，再读 prd/trd-smart-prompt-optimize.md。
-当前任务：继续实现 Worker 的候选执行、评估器重评和多轮选优；OptimizeTask API、持久化、第一阶段 Worker 与前端真实客户端已完成。
+当前任务：继续实现 Worker 的评估器重评和多轮选优；OptimizeTask API、持久化、候选按 case 执行、变量映射载荷与前端真实客户端已完成。
 前端热更新：http://localhost:8090 （后端 :8888 / Web :8082）。
 分支：feat/prompt-loop-multimodal-joybuild。不要提交 .local-migration/。
 ```
@@ -205,7 +205,14 @@ release/deployment/helm-chart/charts/app/bootstrap/init/mysql/init-sql/optimize_
 - [x] 前端真实 OptimizeTask 客户端
 - [x] 按可解析的 case ID 精确裁剪实验结果证据
 - [x] 候选 Prompt 临时执行（按选中 case）
-- [ ] 变量精确渲染 / 原评估器重评 / 多轮验证选优
+- [x] 按 field mapping 构造每个 case 的 variables/evidence 载荷，并保存候选 actual_output
+- [ ] 将 variables 精确渲染进模板 / 原评估器重评 / 多轮验证选优
+
+### 本轮补充（2026-07-20）
+
+- Worker 不再只把原始 case JSON 作为黑盒输入；会解析 `OptimizeFieldMapping`，构造变量映射和 evidence 载荷。
+- 每个候选 case 的模型输出写入 `OptimizeTaskResult.case_details[].after_actual`，同时尽力保留 baseline actual/reference，供下一阶段评估器重评使用。
+- 当前仍未把变量替换进模板，也未调用原评估器计算 after score；因此不能据此宣称 Prompt 已优化成功。
 
 ### 本轮验证结果
 

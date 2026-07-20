@@ -212,7 +212,7 @@ CandidateExecutionResult
   error
 ```
 
-适配器必须保持候选消息的角色、顺序、Few-shot 和多模态 parts，不通过拼接用户输入的方式覆盖原 Prompt。实验来源的 case 输入由 Worker 按显式字段映射转换为 `variable_values`；无法解析映射时任务失败并记录原因。候选执行结果随后交给原评估器重评，禁止使用模型自评结果替代评估器分数。
+适配器必须保持候选消息的角色、顺序、Few-shot 和多模态 parts。Worker 已按 `OptimizeFieldMapping` 将每个 case 的 `from_field_name` 转换为变量名，并以结构化 `variables + evidence` 载荷传给候选模型；候选输出写入 `case_details[].after_actual`。下一阶段需将变量精确渲染进模板，再把候选输出交给原评估器重评；禁止使用模型自评结果替代评估器分数。
 
 ## 7. 存储与异步（已实现）
 

@@ -244,12 +244,13 @@ func (a *OptimizeApplication) processTask(ctx context.Context, taskID int64) {
 		return
 	}
 	_ = a.repo.UpdateProgress(ctx, taskID, 60)
-	if err := a.executeCandidateCases(ctx, record, out); err != nil {
+	caseResults, err := a.executeCandidateCases(ctx, record, out)
+	if err != nil {
 		_ = a.repo.Fail(ctx, taskID, err.Error())
 		return
 	}
 	_ = a.repo.UpdateProgress(ctx, taskID, 80)
-	resultJSON, err := buildOptimizeResult(record, out)
+	resultJSON, err := buildOptimizeResult(record, out, caseResults)
 	if err != nil {
 		_ = a.repo.Fail(ctx, taskID, err.Error())
 		return
@@ -258,25 +259,30 @@ func (a *OptimizeApplication) processTask(ctx context.Context, taskID int64) {
 }
 
 // executeCandidateCases performs one temporary execution per selected case.
-// It deliberately does not create a Prompt version. The raw case snapshot is
-// appended as an evidence message until the field-to-variable evaluator
-// adapter is connected; outputs are never treated as evaluator scores.
-func (a *OptimizeApplication) executeCandidateCases(ctx context.Context, task *entity.OptimizeTaskRecord, out *optimizerOutput) error {
+// It deliberately does not create a Prompt version. Each case is sent with a
+// structured variables/evidence payload; outputs are not treated as scores.
+type candidateCaseResult struct {
+	caseID string
+	output string
+	input map[string]any
+}
+
+func (a *OptimizeApplication) executeCandidateCases(ctx context.Context, task *entity.OptimizeTaskRecord, out *optimizerOutput) ([]candidateCaseResult, error) {
 	var snapshot optimize.OptimizePromptSnapshot
 	if err := json.Unmarshal([]byte(task.BaselinePromptJSON), &snapshot); err != nil {
-		return fmt.Errorf("decode candidate snapshot: %w", err)
+		return nil, fmt.Errorf("decode candidate snapshot: %w", err)
 	}
 	setOptimizedInstruction(&snapshot, out.OptimizedPrompt)
 	messages, err := convertCandidateMessages(snapshot.Messages)
 	if err != nil {
-		return fmt.Errorf("convert candidate messages: %w", err)
+		return nil, fmt.Errorf("convert candidate messages: %w", err)
 	}
 	if len(messages) == 0 {
-		return errors.New("candidate prompt has no messages")
+		return nil, errors.New("candidate prompt has no messages")
 	}
 	evidence, err := a.loadEvidence(ctx, task)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	itemEvidence := []json.RawMessage{nil}
 	if response, ok := evidence.(*experimentservice.BatchGetExperimentResultResponse); ok && response != nil && len(response.ItemResults) > 0 {
@@ -284,26 +290,31 @@ func (a *OptimizeApplication) executeCandidateCases(ctx context.Context, task *e
 		for _, item := range response.ItemResults {
 			encoded, marshalErr := json.Marshal(item)
 			if marshalErr != nil {
-				return fmt.Errorf("marshal case evidence: %w", marshalErr)
+				return nil, fmt.Errorf("marshal case evidence: %w", marshalErr)
 			}
 			itemEvidence = append(itemEvidence, encoded)
 		}
 	}
+	results := make([]candidateCaseResult, 0, len(itemEvidence))
 	for index, evidenceJSON := range itemEvidence {
 		if cancelled, _ := a.repo.IsCancelRequested(ctx, task.ID); cancelled {
-			return errors.New("candidate execution cancelled")
+			return nil, errors.New("candidate execution cancelled")
 		}
+		mapped, caseID := mapCaseEvidence(task, evidenceJSON, index)
+		payload, _ := json.Marshal(map[string]any{"variables": mapped, "evidence": json.RawMessage(evidenceJSON)})
+		caseText := string(payload)
 		caseMessages := append([]*entity.Message(nil), messages...)
-		caseText := string(evidenceJSON)
 		caseMessages = append(caseMessages, &entity.Message{Role: entity.RoleUser, Content: &entity.Content{ContentType: contentType(entity.ContentTypeText), Text: &caseText}})
-		if err := a.callCandidate(ctx, task, caseMessages); err != nil {
-			return fmt.Errorf("execute candidate case %d: %w", index, err)
+		output, err := a.callCandidate(ctx, task, caseMessages)
+		if err != nil {
+			return nil, fmt.Errorf("execute candidate case %d: %w", index, err)
 		}
+		results = append(results, candidateCaseResult{caseID: caseID, output: output, input: mapped})
 	}
-	return nil
+	return results, nil
 }
 
-func (a *OptimizeApplication) callCandidate(ctx context.Context, task *entity.OptimizeTaskRecord, messages []*entity.Message) error {
+func (a *OptimizeApplication) callCandidate(ctx context.Context, task *entity.OptimizeTaskRecord, messages []*entity.Message) (string, error) {
 	modelID := task.OptimizerModelID
 	maxTokens := int32(4096)
 	temperature := 0.2
@@ -313,12 +324,12 @@ func (a *OptimizeApplication) callCandidate(ctx context.Context, task *entity.Op
 		ModelConfig: &entity.ModelConfig{ModelID: &modelID, MaxTokens: &maxTokens, Temperature: &temperature},
 	})
 	if err != nil {
-		return fmt.Errorf("execute candidate: %w", err)
+		return "", fmt.Errorf("execute candidate: %w", err)
 	}
 	if reply == nil || reply.Content == nil || strings.TrimSpace(*reply.Content) == "" {
-		return errors.New("candidate execution returned empty output")
+		return "", errors.New("candidate execution returned empty output")
 	}
-	return nil
+	return *reply.Content, nil
 }
 
 func (a *OptimizeApplication) generateCandidate(ctx context.Context, task *entity.OptimizeTaskRecord) (*optimizerOutput, error) {
@@ -416,7 +427,7 @@ func (a *OptimizeApplication) loadEvidence(ctx context.Context, task *entity.Opt
 	return resp, nil
 }
 
-func buildOptimizeResult(record *entity.OptimizeTaskRecord, out *optimizerOutput) (string, error) {
+func buildOptimizeResult(record *entity.OptimizeTaskRecord, out *optimizerOutput, caseResults []candidateCaseResult) (string, error) {
 	var before optimize.OptimizePromptSnapshot
 	if err := json.Unmarshal([]byte(record.BaselinePromptJSON), &before); err != nil {
 		return "", err
@@ -434,8 +445,38 @@ func buildOptimizeResult(record *entity.OptimizeTaskRecord, out *optimizerOutput
 			SuggestedInstructionChanges: out.SuggestedChanges,
 		},
 	}
+	for _, item := range caseResults {
+		caseID := item.caseID
+		actual := item.output
+		detail := &optimize.OptimizeCaseDetail{CaseID: caseID, AfterActual: &actual}
+		if v, ok := item.input["actual_output"]; ok { s := fmt.Sprint(v); detail.BeforeActual = &s }
+		if v, ok := item.input["reference_output"]; ok { s := fmt.Sprint(v); detail.Reference = &s }
+		result.CaseDetails = append(result.CaseDetails, detail)
+	}
 	b, err := json.Marshal(result)
 	return string(b), err
+}
+
+func mapCaseEvidence(task *entity.OptimizeTaskRecord, raw json.RawMessage, index int) (map[string]any, string) {
+	var source map[string]any
+	_ = json.Unmarshal(raw, &source)
+	var mapping optimize.OptimizeFieldMapping
+	_ = json.Unmarshal([]byte(task.MappingJSON), &mapping)
+	out := make(map[string]any)
+	for _, field := range mapping.VariableFields {
+		if field == nil { continue }
+		if value, ok := source[field.GetFromFieldName()]; ok { out[field.GetFieldName()] = value }
+	}
+	if mapping.ActualOutputField != nil {
+		if value, ok := source[*mapping.ActualOutputField]; ok { out["actual_output"] = value }
+	}
+	if mapping.ReferenceOutputField != nil {
+		if value, ok := source[*mapping.ReferenceOutputField]; ok { out["reference_output"] = value }
+	}
+	caseID := strconv.Itoa(index)
+	if value, ok := source["item_id"]; ok { caseID = fmt.Sprint(value) }
+	if value, ok := source["case_id"]; ok { caseID = fmt.Sprint(value) }
+	return out, caseID
 }
 
 func setOptimizedInstruction(snapshot *optimize.OptimizePromptSnapshot, text string) {
