@@ -658,7 +658,9 @@ refresh_config() {
   apply_openai_model_config
   apply_model_health
 
-  run_docker image inspect "$FILL_IMAGE" >/dev/null 2>&1 || run_docker pull "$FILL_IMAGE"
+  if [[ "${COZE_LOOP_SKIP_FILL_IMAGE_CHECK:-0}" != "1" ]]; then
+    run_docker image inspect "$FILL_IMAGE" >/dev/null 2>&1 || run_docker pull "$FILL_IMAGE"
+  fi
 
   fill_volume coze-loop_app_bootstrap "$WORK_DIR/bootstrap/app"
   fill_volume coze-loop_app_conf "$WORK_DIR/conf"

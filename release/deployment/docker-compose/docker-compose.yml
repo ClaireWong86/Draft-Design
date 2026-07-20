@@ -125,7 +125,7 @@ services:
     profiles: [ "mysql" ]
     container_name: "coze-loop-mysql-init"
     image: "${COZE_LOOP_MYSQL_IMAGE_REGISTRY}/${COZE_LOOP_MYSQL_IMAGE_REPOSITORY}/${COZE_LOOP_MYSQL_IMAGE_NAME}:${COZE_LOOP_MYSQL_IMAGE_TAG}"
-    restart: no
+    restart: "no"
     networks:
       - coze-loop-network
     volumes:
@@ -165,7 +165,7 @@ services:
     profiles: [ "clickhouse" ]
     container_name: "coze-loop-clickhouse-init"
     image: "${COZE_LOOP_CLICKHOUSE_IMAGE_REGISTRY}/${COZE_LOOP_CLICKHOUSE_IMAGE_REPOSITORY}/${COZE_LOOP_CLICKHOUSE_IMAGE_NAME}:${COZE_LOOP_CLICKHOUSE_IMAGE_TAG}"
-    restart: no
+    restart: "no"
     networks:
       - coze-loop-network
     volumes:
@@ -205,7 +205,7 @@ services:
     profiles: [ "minio" ]
     container_name: "coze-loop-minio-init"
     image: "${COZE_LOOP_OSS_IMAGE_REGISTRY}/${COZE_LOOP_OSS_IMAGE_REPOSITORY}/${COZE_LOOP_OSS_IMAGE_NAME}:${COZE_LOOP_OSS_IMAGE_TAG}"
-    restart: no
+    restart: "no"
     networks:
       - coze-loop-network
     volumes:
@@ -242,7 +242,7 @@ services:
     profiles: [ "rmq" ]
     container_name: "coze-loop-rmq-broker"
     image: "${COZE_LOOP_RMQ_IMAGE_REGISTRY}/${COZE_LOOP_RMQ_IMAGE_REPOSITORY}/${COZE_LOOP_RMQ_IMAGE_NAME}:${COZE_LOOP_RMQ_IMAGE_TAG}"
-    restart: no
+    restart: "no"
     networks:
       - coze-loop-network
     volumes:
@@ -264,7 +264,7 @@ services:
     profiles: [ "rmq" ]
     container_name: "coze-loop-rmq-init"
     image: "${COZE_LOOP_RMQ_IMAGE_REGISTRY}/${COZE_LOOP_RMQ_IMAGE_REPOSITORY}/${COZE_LOOP_RMQ_IMAGE_NAME}:${COZE_LOOP_RMQ_IMAGE_TAG}"
-    restart: no
+    restart: "no"
     networks:
       - coze-loop-network
     volumes:
