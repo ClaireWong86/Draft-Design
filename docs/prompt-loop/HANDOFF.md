@@ -80,7 +80,7 @@ cd frontend/apps/cozeloop && npm run dev   # → :8090，可能只绑 [::1]
 - 当前 wrapper 必须持续显式使用 `--storage-driver=vfs`、`--root=/var/lib/containers/storage-vfs-persistent`、`--runroot=/var/lib/containers/runroot-vfs-persistent`；不要改回 `/run/...`，虚拟机重启会清空 `/run` 并使容器运行时文件失效。
 - machine `/etc/hosts` 需保留 `192.168.127.1 gateway.containers.internal host.containers.internal # codex-podman-gateway`，否则带端口映射的 app/nginx 会因 forwarder 无法解析而启动失败。
 - Docker Hub 在公司网络下需要 machine 内的 `# codex-dockerhub` 静态解析项；不要删除，除非已确认公司 DNS 恢复正常。
-- `.local-migration/` 中 6 个旧 Docker volume 备份尚未导入新 Podman。当前运行的是干净数据卷；先验证功能，再单独安排业务数据迁移。
+- `.local-migration/` 中的旧 MySQL、MinIO 数据已于 2026-07-21 导入新 Podman 正式卷：恢复 1 个用户、5 个评测集、16 条数据、3 个 Prompt 及多模态附件。ClickHouse 备份中的 138 条 Span 尚未导入；Nginx 已由当前镜像重建，MinIO config 备份仅含空证书目录。
 - Podman VM OOM：加内存；保持 keepalive SSH。
 - App panic 缺 RMQ topic：`trace_ingestion_event` 需存在。
 - `:8090` 可能只 listen IPv6（`[::1]`），浏览器 `localhost` 一般可用。
@@ -252,6 +252,8 @@ cd frontend/packages/loop-pages/prompt-pages && rushx lint
 
 本轮额外修复了实验服务接口包引用与 Prompt role（string）到评测运行时 role（enum）的显式转换。
 
-Podman 环境阻塞已于 2026-07-20 解除：新 machine `podman-loop-dev` 使用 rootful、持久化 VFS 隔离存储；Docker Hub 镜像、15 个 bootstrap/config 卷与完整 compose 服务均已就绪。实测 `:8888/ping` 返回 `pong`、`:8082` 返回 HTTP 200；Redis、MySQL、ClickHouse、MinIO、RocketMQ、Python/JS FaaS、app、nginx 均达到 healthy。旧 machine、旧 VFS 存储及 `.local-migration/` 备份均未删除或导入。
+Podman 环境阻塞已于 2026-07-20 解除：新 machine `podman-loop-dev` 使用 rootful、持久化 VFS 隔离存储；Docker Hub 镜像、15 个 bootstrap/config 卷与完整 compose 服务均已就绪。实测 `:8888/ping` 返回 `pong`、`:8082` 返回 HTTP 200；Redis、MySQL、ClickHouse、MinIO、RocketMQ、Python/JS FaaS、app、nginx 均达到 healthy。旧 machine 和 `.local-migration/` 原始备份均保留。
+
+2026-07-21 修复登录错误语义：`GetUserByEmail` 将 `gorm.ErrRecordNotFound` 映射为 `UserNotExistCode`，未知邮箱在中文 Cookie 下返回“用户不存在”，真正的数据库故障才返回“MySQL错误”。本地运行镜像为 `docker.io/library/coze-loop:local-fix`；旧 `coze-loop-app-before-account-fix` 容器保留用于回滚。
 
 IDL 已用项目锁定版本生成：Kitex `v0.13.1`、Hertz `v0.9.7`、ThriftGo `v0.4.1`，Wire `v0.6.0`。社区前端全量 `tsc -b` 仍被仓内既有的 `prompt-components-v2` SVG/CSS 与 `@/` alias 解析问题阻塞；筛选本轮目录后，仅剩同一既有 alias 问题，`smart-optimize` 组件本身无新增类型错误。

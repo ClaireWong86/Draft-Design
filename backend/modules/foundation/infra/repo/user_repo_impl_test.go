@@ -527,7 +527,24 @@ func TestUserRepoImpl_GetUserByEmail(t *testing.T) {
 				email: "test@example.com",
 			},
 			want:    nil,
-			wantErr: errorx.WrapByCode(gorm.ErrRecordNotFound, errno.CommonMySqlErrorCode, errorx.WithExtraMsg("userDao.GetUserByEmail error")),
+			wantErr: errorx.NewByCode(errno.UserNotExistCode),
+		},
+		{
+			name: "database_error",
+			fields: func(ctrl *gomock.Controller) fields {
+				mockUserDao := mysqlmocks.NewMockIUserDAO(ctrl)
+				mockUserDao.EXPECT().FindByEmail(gomock.Any(), "test@example.com").Return(nil, gorm.ErrInvalidDB)
+
+				return fields{
+					userDao: mockUserDao,
+				}
+			}(gomock.NewController(t)),
+			args: args{
+				ctx:   context.Background(),
+				email: "test@example.com",
+			},
+			want:    nil,
+			wantErr: errorx.WrapByCode(gorm.ErrInvalidDB, errno.CommonMySqlErrorCode, errorx.WithExtraMsg("userDao.GetUserByEmail error")),
 		},
 	}
 
