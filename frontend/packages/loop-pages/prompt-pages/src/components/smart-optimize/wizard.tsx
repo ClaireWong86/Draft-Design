@@ -1,6 +1,7 @@
 // Copyright (c) 2025 coze-dev Authors
 // SPDX-License-Identifier: Apache-2.0
 /* eslint-disable @coze-arch/max-line-per-function -- multi-step wizard UI */
+/* eslint-disable max-lines -- multi-step wizard UI */
 /* eslint-disable max-lines-per-function -- multi-step wizard UI */
 /* eslint-disable @typescript-eslint/no-magic-numbers -- mode/estimate defaults */
 /* eslint-disable complexity -- step validation + submit */
@@ -15,6 +16,7 @@ import { type Model } from '@cozeloop/api-schema/llm-manage';
 import { type ColumnEvalSetField } from '@cozeloop/api-schema/evaluation';
 import {
   Button,
+  Checkbox,
   Form,
   Input,
   Modal,
@@ -76,6 +78,9 @@ export function SmartOptimizeWizard({
   const [variableField, setVariableField] = useState('input');
   const [actualField, setActualField] = useState('actual_output');
   const [referenceField, setReferenceField] = useState('reference_output');
+  const [scoreMin, setScoreMin] = useState('');
+  const [scoreMax, setScoreMax] = useState('');
+  const [onlyFailed, setOnlyFailed] = useState(false);
   const modelService = useModelList(spaceID || '');
 
   const title = useMemo(
@@ -116,6 +121,9 @@ export function SmartOptimizeWizard({
     setVariableField('input');
     setActualField('actual_output');
     setReferenceField('reference_output');
+    setScoreMin('');
+    setScoreMax('');
+    setOnlyFailed(false);
   };
 
   const handleClose = () => {
@@ -197,6 +205,9 @@ export function SmartOptimizeWizard({
             : [{ field_name: 'input', from_field_name: variableField }],
           actual_output_field: actualField,
           reference_output_field: referenceField,
+          score_min: scoreMin === '' ? undefined : Number(scoreMin),
+          score_max: scoreMax === '' ? undefined : Number(scoreMax),
+          only_failed: onlyFailed,
         },
         mode_score: modeScore,
         optimizer_model_id: String(optimizerModel?.model_id || ''),
@@ -294,6 +305,31 @@ export function SmartOptimizeWizard({
                 onChange={v => setSourceId(String(v))}
               />
             )}
+          </Form.Slot>
+          <Form.Slot
+            label={I18n.t('smart_optimize_sample_filter', '服务端样本过滤')}
+          >
+            <div className="flex items-center gap-3">
+              <Input
+                className="w-32"
+                value={scoreMin}
+                placeholder={I18n.t('smart_optimize_score_min', '最低分')}
+                onChange={value => setScoreMin(String(value))}
+              />
+              <span>～</span>
+              <Input
+                className="w-32"
+                value={scoreMax}
+                placeholder={I18n.t('smart_optimize_score_max', '最高分')}
+                onChange={value => setScoreMax(String(value))}
+              />
+              <Checkbox
+                checked={onlyFailed}
+                onChange={event => setOnlyFailed(Boolean(event.target.checked))}
+              >
+                {I18n.t('smart_optimize_only_failed', '仅非满分样本')}
+              </Checkbox>
+            </div>
           </Form.Slot>
           <Form.Slot
             label={I18n.t('smart_optimize_source_name', '显示名称（可选）')}

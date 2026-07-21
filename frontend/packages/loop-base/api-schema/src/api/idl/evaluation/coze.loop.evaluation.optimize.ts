@@ -32,12 +32,22 @@ export interface OptimizeFieldMapping {
   variable_fields: OptimizeVariableFieldMapping[],
   actual_output_field?: string,
   reference_output_field?: string,
+  evaluator_version_id?: string,
+  score_min?: number,
+  score_max?: number,
+  only_failed?: boolean,
 }
 export interface OptimizePromptSnapshot {
   prompt_id: string,
   prompt_version?: string,
   messages: prompt_prompt.Message[],
   variable_defs?: prompt_prompt.VariableDef[],
+}
+export interface OptimizeEvaluatorScore {
+  evaluator_version_id: string,
+  evaluator_name?: string,
+  before_score?: number,
+  after_score?: number,
 }
 export interface OptimizeCaseDetail {
   case_id: string,
@@ -46,6 +56,7 @@ export interface OptimizeCaseDetail {
   before_actual?: string,
   after_actual?: string,
   reference?: string,
+  evaluator_scores?: OptimizeEvaluatorScore[],
 }
 export interface OptimizeDiagnosis {
   failure_modes?: string[],

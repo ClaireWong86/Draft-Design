@@ -14,7 +14,7 @@
 ```text
 FE (Header 下拉 + 四工作区 Tab + Confirm Modal + Create Page)
   → OptimizeTask API（同步：创建/查询/终止/采纳）
-  → OptimizeWorker（异步：诊断 → 候选改写；评估/选择闭环为下一阶段）
+  → OptimizeWorker（异步：诊断 → 多候选改写 → 原评估器重评 → 验证集选优）
        ├─ Evaluation APIs（实验明细 / 评测集条目）
        ├─ Prompt Version API（加载 / 采纳后由用户提交）
        └─ Rewrite & Judge LLM
@@ -212,26 +212,26 @@ CandidateExecutionResult
   error
 ```
 
-适配器必须保持候选消息的角色、顺序、Few-shot 和多模态 parts。Worker 已按 `OptimizeFieldMapping` 将每个 case 的 `from_field_name` 转换为变量名，并以结构化 `variables + evidence` 载荷传给候选模型；候选输出写入 `case_details[].after_actual`。下一阶段需将变量精确渲染进模板，再把候选输出交给原评估器重评；禁止使用模型自评结果替代评估器分数。
+适配器保持候选消息的角色、顺序、Few-shot 和多模态 parts。Worker 按 `OptimizeFieldMapping` 将每个 case 的 `from_field_name` 转换为变量名并精确渲染到模板；候选输出写入 `case_details[].after_actual`，随后交给原 evaluator version 重评。禁止使用模型自评结果替代评估器分数。
 
 ## 7. 存储与异步（已实现）
 
 - MySQL `optimize_task` 保存不可变基线、映射、样本 ID、模型、状态与结果 JSON；SQL 已同步 Docker init/patch 与 Helm init。
-- Create 先持久化 `queued` 再入内部有界队列；Worker 原子 claim 后更新 `running/progress/succeeded/failed/cancelled`。
-- 每 30 秒扫描持久化队列；服务重启会恢复 queued 任务，并将超过 10 分钟未更新的 running 任务重新排队。
+- Create 先持久化 `queued` 再入内部有界队列；Worker 使用 lease token 原子 claim 后更新 `running/progress/succeeded/failed/cancelled`。
+- 每 30 秒扫描持久化队列；服务重启会恢复 queued 任务，并将 lease 过期的 running 任务重新排队，最多认领 3 次。
 - Worker 在调用优化模型前后检查取消标记；模型空响应、非 JSON、缺少 `optimized_prompt` 均进入 `failed` 并保留错误。
-- 当前采用进程内 Worker，适合单实例 OSS MVP；多实例/高吞吐部署应将同一持久任务协议迁移到 RocketMQ，并增加租约/重试次数。
+- 当前 Worker 可多实例部署：MySQL 是任务事实源，lease 保证并发正确性。RocketMQ 后续只需承担低延迟唤醒，不改变持久任务协议。
 
 ### 7.1 当前 Worker 的准确能力边界
 
-本轮已完成“可运行的第一阶段后端”，不是完整的迭代优化算法：
+实验来源已完成可运行的迭代优化算法：
 
 1. 输入不可变 Prompt 快照、字段映射、来源与选中 case ID；
 2. 使用用户选择的 `optimizer_model_id` 调用 LLM Runtime；
-3. 生成结构化诊断与候选 Prompt，保留变量定义和多模态 parts；
-4. 持久化结果，允许查询、取消、恢复和前端采纳。
+3. 生成多轮多候选 Prompt，保留变量定义和多模态 parts；
+4. 在独立验证集按原评估器得分选优，持久化报告，允许查询、取消、恢复和前端采纳。
 
-尚未完成的是从实验/评测集加载每条真实 input/output/score、执行候选 Prompt、调用原评估器重评，以及优化集/验证集选优。因此当前成功任务若无分数，UI 明确显示“候选已生成（待重评）”，不会伪造提升分。
+Goodcase 评测集来源尚未接入 item API；该来源不会伪造实验分数。
 
 ## 8. 权限
 
@@ -249,5 +249,16 @@ CandidateExecutionResult
 2. [x] 实验详情入口、真实 `ListExperiments` / `BatchGetExperimentResult`、多模态选择与 Schema 映射
 3. [x] OptimizeTask IDL、MySQL、API、异步 Worker 与恢复
 4. [x] 可用优化模型选择、FE 真实任务客户端
-5. [ ] Worker 加载完整 case 证据，执行候选并复用评估器重评
-6. [ ] 优化集/验证集拆分、多候选多轮选优、成本预算与 RocketMQ 多实例化
+5. [x] Worker 加载完整 case 证据，执行候选并复用评估器重评
+6. [x] 优化集/验证集拆分、多候选多轮选优、成本预算与租约式多实例安全
+# 2026-07-21 实现落地说明
+
+实验驱动路径已经按本文算法落地为可恢复的 OptimizeTask：
+
+1. 字段映射支持显式 JSON path；`{{ variable }}` 在执行前渲染到消息正文和多模态 text part，缺失变量直接终止任务，不再把 variables/evidence JSON 追加成伪用户消息。
+2. 每个候选输出复用基线实验记录中的 evaluator version 与 evaluator input，替换 actual output 后同步重评；报告保存综合分、分布、逐 case 及逐评估器 before/after。
+3. cost/balanced/quality 分别映射到 1/2/3 轮、每轮 2/2/3 候选及 24/48/96 次模型调用上限；case 固定拆分优化集和验证集，验证集选优，增益不超过 0.001 时提前停止。
+4. Worker 使用 MySQL 原子 claim 和 10 分钟 lease，执行中续租；lease token 约束进度、失败和完成写入，过期任务最多重试认领 3 次。因此可多实例运行且旧 Worker 不会覆盖新结果。
+5. 创建任务可配置 evaluator version、score_min、score_max、only_failed；reference output 必须走显式映射。采纳后写入完整 messages，并触发产品标准「提交新版」流。
+
+边界：Goodcase/eval-set source 仍需接 EvaluationSet item API；当前完整重评与筛选闭环针对 experiment source。RocketMQ 可作为未来的低延迟唤醒通道，但任务事实源和并发正确性由 MySQL lease 保证。

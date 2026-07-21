@@ -8,6 +8,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { usePromptStore } from '@cozeloop/prompt-components-v2';
 import { I18n } from '@cozeloop/i18n-adapter';
 import {
+  type OptimizeCaseDetail,
   Button,
   Input,
   Modal,
@@ -60,6 +61,20 @@ export function SmartOptimizeTaskPanel({
   const [keyword, setKeyword] = useState('');
   const [filterStatus, setFilterStatus] = useState<OptimizeTaskStatus | 'all'>(
     'all',
+  );
+
+  const reportEvaluatorIDs = useMemo(
+    () =>
+      Array.from(
+        new Set(
+          (reportTask?.result?.case_details || []).flatMap(item =>
+            (item.evaluator_scores || []).map(
+              score => score.evaluator_version_id,
+            ),
+          ),
+        ),
+      ),
+    [reportTask],
   );
 
   const filteredTasks = useMemo(() => {
@@ -342,6 +357,23 @@ export function SmartOptimizeTaskPanel({
                 )}
               </Typography.Text>
             )}
+            {reportTask.result.score_distribution.before.length ||
+            reportTask.result.score_distribution.after.length ? (
+              <div className="grid grid-cols-2 gap-3 rounded bg-[var(--coz-mg-primary)] p-3">
+                <Typography.Text size="small">
+                  {I18n.t('smart_optimize_before_distribution', '优化前分布')}：
+                  {reportTask.result.score_distribution.before
+                    .map(value => value.toFixed(2))
+                    .join(' / ') || '-'}
+                </Typography.Text>
+                <Typography.Text size="small">
+                  {I18n.t('smart_optimize_after_distribution', '优化后分布')}：
+                  {reportTask.result.score_distribution.after
+                    .map(value => value.toFixed(2))
+                    .join(' / ') || '-'}
+                </Typography.Text>
+              </div>
+            ) : null}
             {reportTask.result.diagnosis?.failure_modes?.length ? (
               <div>
                 <Typography.Text strong>
@@ -400,6 +432,18 @@ export function SmartOptimizeTaskPanel({
                     dataIndex: 'after_score',
                     width: 90,
                   },
+                  ...reportEvaluatorIDs.map(evaluatorID => ({
+                    title: `评估器 ${evaluatorID}`,
+                    width: 150,
+                    render: (_: unknown, row: OptimizeCaseDetail) => {
+                      const score = row.evaluator_scores?.find(
+                        item => item.evaluator_version_id === evaluatorID,
+                      );
+                      return score
+                        ? `${score.before_score?.toFixed(2) ?? '-'} → ${score.after_score?.toFixed(2) ?? '-'}`
+                        : '-';
+                    },
+                  })),
                 ],
               }}
             />

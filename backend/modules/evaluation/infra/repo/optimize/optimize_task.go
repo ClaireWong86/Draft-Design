@@ -15,26 +15,29 @@ import (
 )
 
 type optimizeTaskPO struct {
-	ID                 int64     `gorm:"column:id;primaryKey"`
-	WorkspaceID        int64     `gorm:"column:workspace_id"`
-	PromptID           int64     `gorm:"column:prompt_id"`
-	PromptVersion      string    `gorm:"column:prompt_version"`
-	Name               string    `gorm:"column:name"`
-	SourceType         string    `gorm:"column:source_type"`
-	SourceID           int64     `gorm:"column:source_id"`
-	CaseItemIDsJSON    string    `gorm:"column:case_item_ids"`
-	MappingJSON        string    `gorm:"column:mapping"`
-	BaselinePromptJSON string    `gorm:"column:baseline_prompt"`
-	OptimizerModelID   int64     `gorm:"column:optimizer_model_id"`
-	ModeScore          float64   `gorm:"column:mode_score"`
-	Status             string    `gorm:"column:status"`
-	Progress           int32     `gorm:"column:progress"`
-	ResultJSON         *string   `gorm:"column:result"`
-	ErrorMsg           string    `gorm:"column:error_msg"`
-	CancelRequested    bool      `gorm:"column:cancel_requested"`
-	CreatedBy          string    `gorm:"column:created_by"`
-	CreatedAt          time.Time `gorm:"column:created_at"`
-	UpdatedAt          time.Time `gorm:"column:updated_at"`
+	ID                 int64      `gorm:"column:id;primaryKey"`
+	WorkspaceID        int64      `gorm:"column:workspace_id"`
+	PromptID           int64      `gorm:"column:prompt_id"`
+	PromptVersion      string     `gorm:"column:prompt_version"`
+	Name               string     `gorm:"column:name"`
+	SourceType         string     `gorm:"column:source_type"`
+	SourceID           int64      `gorm:"column:source_id"`
+	CaseItemIDsJSON    string     `gorm:"column:case_item_ids"`
+	MappingJSON        string     `gorm:"column:mapping"`
+	BaselinePromptJSON string     `gorm:"column:baseline_prompt"`
+	OptimizerModelID   int64      `gorm:"column:optimizer_model_id"`
+	ModeScore          float64    `gorm:"column:mode_score"`
+	Status             string     `gorm:"column:status"`
+	Progress           int32      `gorm:"column:progress"`
+	ResultJSON         *string    `gorm:"column:result"`
+	ErrorMsg           string     `gorm:"column:error_msg"`
+	CancelRequested    bool       `gorm:"column:cancel_requested"`
+	LeaseToken         string     `gorm:"column:lease_token"`
+	LeaseExpiresAt     *time.Time `gorm:"column:lease_expires_at"`
+	AttemptCount       int32      `gorm:"column:attempt_count"`
+	CreatedBy          string     `gorm:"column:created_by"`
+	CreatedAt          time.Time  `gorm:"column:created_at"`
+	UpdatedAt          time.Time  `gorm:"column:updated_at"`
 }
 
 func (optimizeTaskPO) TableName() string { return "optimize_task" }
@@ -105,36 +108,49 @@ func (r *OptimizeTaskRepo) ListQueued(ctx context.Context, limit int) ([]*entity
 	return result, nil
 }
 
-func (r *OptimizeTaskRepo) RequeueStale(ctx context.Context, updatedBefore time.Time) error {
-	return r.db.NewSession(ctx).Model(&optimizeTaskPO{}).
-		Where("status = ? AND updated_at < ?", entity.OptimizeTaskStatusRunning, updatedBefore).
-		Updates(map[string]any{
-			"status":    entity.OptimizeTaskStatusQueued,
-			"progress":  0,
-			"error_msg": "",
-		}).Error
+func (r *OptimizeTaskRepo) RequeueStale(ctx context.Context, expiredBefore time.Time) error {
+	return r.db.Transaction(ctx, func(tx *gorm.DB) error {
+		if err := tx.Model(&optimizeTaskPO{}).
+			Where("status = ? AND lease_expires_at IS NOT NULL AND lease_expires_at < ? AND attempt_count >= ?", entity.OptimizeTaskStatusRunning, expiredBefore, entity.OptimizeTaskMaxAttempts).
+			Updates(map[string]any{"status": entity.OptimizeTaskStatusFailed, "error_msg": "worker retry limit exceeded", "lease_token": "", "lease_expires_at": nil}).Error; err != nil {
+			return err
+		}
+		return tx.Model(&optimizeTaskPO{}).
+			Where("status = ? AND lease_expires_at IS NOT NULL AND lease_expires_at < ?", entity.OptimizeTaskStatusRunning, expiredBefore).
+			Updates(map[string]any{
+				"status": entity.OptimizeTaskStatusQueued, "progress": 0, "error_msg": "",
+				"lease_token": "", "lease_expires_at": nil,
+			}).Error
+	})
 }
 
-func (r *OptimizeTaskRepo) MarkRunning(ctx context.Context, taskID int64) (bool, error) {
+func (r *OptimizeTaskRepo) MarkRunning(ctx context.Context, taskID int64, leaseToken string, leaseUntil time.Time, maxAttempts int32) (bool, error) {
 	result := r.db.NewSession(ctx).Model(&optimizeTaskPO{}).
-		Where("id = ? AND status = ? AND cancel_requested = 0", taskID, entity.OptimizeTaskStatusQueued).
-		Updates(map[string]any{"status": entity.OptimizeTaskStatusRunning, "progress": 5})
+		Where("id = ? AND status = ? AND cancel_requested = 0 AND attempt_count < ?", taskID, entity.OptimizeTaskStatusQueued, maxAttempts).
+		Updates(map[string]any{"status": entity.OptimizeTaskStatusRunning, "progress": 5, "lease_token": leaseToken,
+			"lease_expires_at": leaseUntil, "attempt_count": gorm.Expr("attempt_count + 1")})
 	return result.RowsAffected == 1, result.Error
 }
 
-func (r *OptimizeTaskRepo) UpdateProgress(ctx context.Context, taskID int64, progress int32) error {
-	return r.db.NewSession(ctx).Model(&optimizeTaskPO{}).Where("id = ?", taskID).
+func (r *OptimizeTaskRepo) RenewLease(ctx context.Context, taskID int64, leaseToken string, leaseUntil time.Time) error {
+	return r.db.NewSession(ctx).Model(&optimizeTaskPO{}).
+		Where("id = ? AND status = ? AND lease_token = ?", taskID, entity.OptimizeTaskStatusRunning, leaseToken).
+		Update("lease_expires_at", leaseUntil).Error
+}
+
+func (r *OptimizeTaskRepo) UpdateProgress(ctx context.Context, taskID int64, leaseToken string, progress int32) error {
+	return r.db.NewSession(ctx).Model(&optimizeTaskPO{}).Where("id = ? AND status = ? AND lease_token = ?", taskID, entity.OptimizeTaskStatusRunning, leaseToken).
 		Update("progress", progress).Error
 }
 
-func (r *OptimizeTaskRepo) Complete(ctx context.Context, taskID int64, resultJSON string) error {
-	return r.db.NewSession(ctx).Model(&optimizeTaskPO{}).Where("id = ?", taskID).
-		Updates(map[string]any{"status": entity.OptimizeTaskStatusSucceeded, "progress": 100, "result": resultJSON, "error_msg": ""}).Error
+func (r *OptimizeTaskRepo) Complete(ctx context.Context, taskID int64, leaseToken, resultJSON string) error {
+	return r.db.NewSession(ctx).Model(&optimizeTaskPO{}).Where("id = ? AND status = ? AND lease_token = ?", taskID, entity.OptimizeTaskStatusRunning, leaseToken).
+		Updates(map[string]any{"status": entity.OptimizeTaskStatusSucceeded, "progress": 100, "result": resultJSON, "error_msg": "", "lease_token": "", "lease_expires_at": nil}).Error
 }
 
-func (r *OptimizeTaskRepo) Fail(ctx context.Context, taskID int64, errMsg string) error {
-	return r.db.NewSession(ctx).Model(&optimizeTaskPO{}).Where("id = ?", taskID).
-		Updates(map[string]any{"status": entity.OptimizeTaskStatusFailed, "error_msg": errMsg}).Error
+func (r *OptimizeTaskRepo) Fail(ctx context.Context, taskID int64, leaseToken, errMsg string) error {
+	return r.db.NewSession(ctx).Model(&optimizeTaskPO{}).Where("id = ? AND status = ? AND lease_token = ?", taskID, entity.OptimizeTaskStatusRunning, leaseToken).
+		Updates(map[string]any{"status": entity.OptimizeTaskStatusFailed, "error_msg": errMsg, "lease_token": "", "lease_expires_at": nil}).Error
 }
 
 func (r *OptimizeTaskRepo) RequestCancel(ctx context.Context, workspaceID, taskID int64) error {
@@ -192,6 +208,7 @@ func toPO(task *entity.OptimizeTaskRecord) *optimizeTaskPO {
 		OptimizerModelID: task.OptimizerModelID, ModeScore: task.ModeScore, Status: task.Status,
 		Progress: task.Progress, ResultJSON: result, ErrorMsg: task.ErrorMsg,
 		CancelRequested: task.CancelRequested, CreatedBy: task.CreatedBy,
+		LeaseToken: task.LeaseToken, LeaseExpiresAt: task.LeaseExpiresAt, AttemptCount: task.AttemptCount,
 	}
 }
 
@@ -211,6 +228,7 @@ func toDO(po *optimizeTaskPO) *entity.OptimizeTaskRecord {
 		OptimizerModelID: po.OptimizerModelID, ModeScore: po.ModeScore, Status: po.Status,
 		Progress: po.Progress, ResultJSON: result, ErrorMsg: po.ErrorMsg,
 		CancelRequested: po.CancelRequested, CreatedBy: po.CreatedBy,
+		LeaseToken: po.LeaseToken, LeaseExpiresAt: po.LeaseExpiresAt, AttemptCount: po.AttemptCount,
 		CreatedAt: po.CreatedAt, UpdatedAt: po.UpdatedAt,
 	}
 }

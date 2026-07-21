@@ -40,6 +40,7 @@ export default function PromptDevelopPage() {
   const [promptInfo, setPromptInfo] = useState<Prompt>();
   const [activeTab, setActiveTab] = useState(searchParams.get('tab') || 'dev');
   const [confirmVisible, setConfirmVisible] = useState(false);
+  const [submitRequestKey, setSubmitRequestKey] = useState(0);
   const traceHistoryPannel = useModalData();
   const traceLogPannel = useModalData<string>();
   const navigate = useNavigateModule();
@@ -82,12 +83,20 @@ export default function PromptDevelopPage() {
           <SmartOptimizeTaskPanel
             promptID={promptID}
             spaceID={spaceID}
-            onAdoptSuccess={() => setActiveTab('dev')}
+            onAdoptSuccess={() => {
+              setActiveTab('dev');
+              setSearchParams(current => {
+                const next = new URLSearchParams(current);
+                next.delete('tab');
+                return next;
+              });
+              setSubmitRequestKey(value => value + 1);
+            }}
           />
         ),
       },
     ],
-    [promptID, promptInfo?.prompt_key, spaceID],
+    [promptID, promptInfo?.prompt_key, setSearchParams, spaceID],
   );
 
   const handleTabChange = (tabKey: string) => {
@@ -146,6 +155,7 @@ export default function PromptDevelopPage() {
           );
         }}
         hideSnippet={true}
+        submitRequestKey={submitRequestKey}
         activeTab={activeTab}
         tabsChange={handleTabChange}
         extraTabs={extraTabs}

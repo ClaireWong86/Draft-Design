@@ -654,6 +654,62 @@ func (p *OptimizeFieldMapping) FastRead(buf []byte) (int, error) {
 					goto SkipFieldError
 				}
 			}
+		case 4:
+			if fieldTypeId == thrift.I64 {
+				l, err = p.FastReadField4(buf[offset:])
+				offset += l
+				if err != nil {
+					goto ReadFieldError
+				}
+			} else {
+				l, err = thrift.Binary.Skip(buf[offset:], fieldTypeId)
+				offset += l
+				if err != nil {
+					goto SkipFieldError
+				}
+			}
+		case 5:
+			if fieldTypeId == thrift.DOUBLE {
+				l, err = p.FastReadField5(buf[offset:])
+				offset += l
+				if err != nil {
+					goto ReadFieldError
+				}
+			} else {
+				l, err = thrift.Binary.Skip(buf[offset:], fieldTypeId)
+				offset += l
+				if err != nil {
+					goto SkipFieldError
+				}
+			}
+		case 6:
+			if fieldTypeId == thrift.DOUBLE {
+				l, err = p.FastReadField6(buf[offset:])
+				offset += l
+				if err != nil {
+					goto ReadFieldError
+				}
+			} else {
+				l, err = thrift.Binary.Skip(buf[offset:], fieldTypeId)
+				offset += l
+				if err != nil {
+					goto SkipFieldError
+				}
+			}
+		case 7:
+			if fieldTypeId == thrift.BOOL {
+				l, err = p.FastReadField7(buf[offset:])
+				offset += l
+				if err != nil {
+					goto ReadFieldError
+				}
+			} else {
+				l, err = thrift.Binary.Skip(buf[offset:], fieldTypeId)
+				offset += l
+				if err != nil {
+					goto SkipFieldError
+				}
+			}
 		default:
 			l, err = thrift.Binary.Skip(buf[offset:], fieldTypeId)
 			offset += l
@@ -731,6 +787,62 @@ func (p *OptimizeFieldMapping) FastReadField3(buf []byte) (int, error) {
 	return offset, nil
 }
 
+func (p *OptimizeFieldMapping) FastReadField4(buf []byte) (int, error) {
+	offset := 0
+
+	var _field *int64
+	if v, l, err := thrift.Binary.ReadI64(buf[offset:]); err != nil {
+		return offset, err
+	} else {
+		offset += l
+		_field = &v
+	}
+	p.EvaluatorVersionID = _field
+	return offset, nil
+}
+
+func (p *OptimizeFieldMapping) FastReadField5(buf []byte) (int, error) {
+	offset := 0
+
+	var _field *float64
+	if v, l, err := thrift.Binary.ReadDouble(buf[offset:]); err != nil {
+		return offset, err
+	} else {
+		offset += l
+		_field = &v
+	}
+	p.ScoreMin = _field
+	return offset, nil
+}
+
+func (p *OptimizeFieldMapping) FastReadField6(buf []byte) (int, error) {
+	offset := 0
+
+	var _field *float64
+	if v, l, err := thrift.Binary.ReadDouble(buf[offset:]); err != nil {
+		return offset, err
+	} else {
+		offset += l
+		_field = &v
+	}
+	p.ScoreMax = _field
+	return offset, nil
+}
+
+func (p *OptimizeFieldMapping) FastReadField7(buf []byte) (int, error) {
+	offset := 0
+
+	var _field *bool
+	if v, l, err := thrift.Binary.ReadBool(buf[offset:]); err != nil {
+		return offset, err
+	} else {
+		offset += l
+		_field = &v
+	}
+	p.OnlyFailed = _field
+	return offset, nil
+}
+
 func (p *OptimizeFieldMapping) FastWrite(buf []byte) int {
 	return p.FastWriteNocopy(buf, nil)
 }
@@ -738,6 +850,10 @@ func (p *OptimizeFieldMapping) FastWrite(buf []byte) int {
 func (p *OptimizeFieldMapping) FastWriteNocopy(buf []byte, w thrift.NocopyWriter) int {
 	offset := 0
 	if p != nil {
+		offset += p.fastWriteField4(buf[offset:], w)
+		offset += p.fastWriteField5(buf[offset:], w)
+		offset += p.fastWriteField6(buf[offset:], w)
+		offset += p.fastWriteField7(buf[offset:], w)
 		offset += p.fastWriteField1(buf[offset:], w)
 		offset += p.fastWriteField2(buf[offset:], w)
 		offset += p.fastWriteField3(buf[offset:], w)
@@ -752,6 +868,10 @@ func (p *OptimizeFieldMapping) BLength() int {
 		l += p.field1Length()
 		l += p.field2Length()
 		l += p.field3Length()
+		l += p.field4Length()
+		l += p.field5Length()
+		l += p.field6Length()
+		l += p.field7Length()
 	}
 	l += thrift.Binary.FieldStopLength()
 	return l
@@ -789,6 +909,42 @@ func (p *OptimizeFieldMapping) fastWriteField3(buf []byte, w thrift.NocopyWriter
 	return offset
 }
 
+func (p *OptimizeFieldMapping) fastWriteField4(buf []byte, w thrift.NocopyWriter) int {
+	offset := 0
+	if p.IsSetEvaluatorVersionID() {
+		offset += thrift.Binary.WriteFieldBegin(buf[offset:], thrift.I64, 4)
+		offset += thrift.Binary.WriteI64(buf[offset:], *p.EvaluatorVersionID)
+	}
+	return offset
+}
+
+func (p *OptimizeFieldMapping) fastWriteField5(buf []byte, w thrift.NocopyWriter) int {
+	offset := 0
+	if p.IsSetScoreMin() {
+		offset += thrift.Binary.WriteFieldBegin(buf[offset:], thrift.DOUBLE, 5)
+		offset += thrift.Binary.WriteDouble(buf[offset:], *p.ScoreMin)
+	}
+	return offset
+}
+
+func (p *OptimizeFieldMapping) fastWriteField6(buf []byte, w thrift.NocopyWriter) int {
+	offset := 0
+	if p.IsSetScoreMax() {
+		offset += thrift.Binary.WriteFieldBegin(buf[offset:], thrift.DOUBLE, 6)
+		offset += thrift.Binary.WriteDouble(buf[offset:], *p.ScoreMax)
+	}
+	return offset
+}
+
+func (p *OptimizeFieldMapping) fastWriteField7(buf []byte, w thrift.NocopyWriter) int {
+	offset := 0
+	if p.IsSetOnlyFailed() {
+		offset += thrift.Binary.WriteFieldBegin(buf[offset:], thrift.BOOL, 7)
+		offset += thrift.Binary.WriteBool(buf[offset:], *p.OnlyFailed)
+	}
+	return offset
+}
+
 func (p *OptimizeFieldMapping) field1Length() int {
 	l := 0
 	l += thrift.Binary.FieldBeginLength()
@@ -814,6 +970,42 @@ func (p *OptimizeFieldMapping) field3Length() int {
 	if p.IsSetReferenceOutputField() {
 		l += thrift.Binary.FieldBeginLength()
 		l += thrift.Binary.StringLengthNocopy(*p.ReferenceOutputField)
+	}
+	return l
+}
+
+func (p *OptimizeFieldMapping) field4Length() int {
+	l := 0
+	if p.IsSetEvaluatorVersionID() {
+		l += thrift.Binary.FieldBeginLength()
+		l += thrift.Binary.I64Length()
+	}
+	return l
+}
+
+func (p *OptimizeFieldMapping) field5Length() int {
+	l := 0
+	if p.IsSetScoreMin() {
+		l += thrift.Binary.FieldBeginLength()
+		l += thrift.Binary.DoubleLength()
+	}
+	return l
+}
+
+func (p *OptimizeFieldMapping) field6Length() int {
+	l := 0
+	if p.IsSetScoreMax() {
+		l += thrift.Binary.FieldBeginLength()
+		l += thrift.Binary.DoubleLength()
+	}
+	return l
+}
+
+func (p *OptimizeFieldMapping) field7Length() int {
+	l := 0
+	if p.IsSetOnlyFailed() {
+		l += thrift.Binary.FieldBeginLength()
+		l += thrift.Binary.BoolLength()
 	}
 	return l
 }
@@ -853,6 +1045,26 @@ func (p *OptimizeFieldMapping) DeepCopy(s interface{}) error {
 			tmp = kutils.StringDeepCopy(*src.ReferenceOutputField)
 		}
 		p.ReferenceOutputField = &tmp
+	}
+
+	if src.EvaluatorVersionID != nil {
+		tmp := *src.EvaluatorVersionID
+		p.EvaluatorVersionID = &tmp
+	}
+
+	if src.ScoreMin != nil {
+		tmp := *src.ScoreMin
+		p.ScoreMin = &tmp
+	}
+
+	if src.ScoreMax != nil {
+		tmp := *src.ScoreMax
+		p.ScoreMax = &tmp
+	}
+
+	if src.OnlyFailed != nil {
+		tmp := *src.OnlyFailed
+		p.OnlyFailed = &tmp
 	}
 
 	return nil
@@ -1205,6 +1417,286 @@ func (p *OptimizePromptSnapshot) DeepCopy(s interface{}) error {
 	return nil
 }
 
+func (p *OptimizeEvaluatorScore) FastRead(buf []byte) (int, error) {
+
+	var err error
+	var offset int
+	var l int
+	var fieldTypeId thrift.TType
+	var fieldId int16
+	var issetEvaluatorVersionID bool = false
+	for {
+		fieldTypeId, fieldId, l, err = thrift.Binary.ReadFieldBegin(buf[offset:])
+		offset += l
+		if err != nil {
+			goto ReadFieldBeginError
+		}
+		if fieldTypeId == thrift.STOP {
+			break
+		}
+		switch fieldId {
+		case 1:
+			if fieldTypeId == thrift.I64 {
+				l, err = p.FastReadField1(buf[offset:])
+				offset += l
+				if err != nil {
+					goto ReadFieldError
+				}
+				issetEvaluatorVersionID = true
+			} else {
+				l, err = thrift.Binary.Skip(buf[offset:], fieldTypeId)
+				offset += l
+				if err != nil {
+					goto SkipFieldError
+				}
+			}
+		case 2:
+			if fieldTypeId == thrift.STRING {
+				l, err = p.FastReadField2(buf[offset:])
+				offset += l
+				if err != nil {
+					goto ReadFieldError
+				}
+			} else {
+				l, err = thrift.Binary.Skip(buf[offset:], fieldTypeId)
+				offset += l
+				if err != nil {
+					goto SkipFieldError
+				}
+			}
+		case 3:
+			if fieldTypeId == thrift.DOUBLE {
+				l, err = p.FastReadField3(buf[offset:])
+				offset += l
+				if err != nil {
+					goto ReadFieldError
+				}
+			} else {
+				l, err = thrift.Binary.Skip(buf[offset:], fieldTypeId)
+				offset += l
+				if err != nil {
+					goto SkipFieldError
+				}
+			}
+		case 4:
+			if fieldTypeId == thrift.DOUBLE {
+				l, err = p.FastReadField4(buf[offset:])
+				offset += l
+				if err != nil {
+					goto ReadFieldError
+				}
+			} else {
+				l, err = thrift.Binary.Skip(buf[offset:], fieldTypeId)
+				offset += l
+				if err != nil {
+					goto SkipFieldError
+				}
+			}
+		default:
+			l, err = thrift.Binary.Skip(buf[offset:], fieldTypeId)
+			offset += l
+			if err != nil {
+				goto SkipFieldError
+			}
+		}
+	}
+
+	if !issetEvaluatorVersionID {
+		fieldId = 1
+		goto RequiredFieldNotSetError
+	}
+	return offset, nil
+ReadFieldBeginError:
+	return offset, thrift.PrependError(fmt.Sprintf("%T read field %d begin error: ", p, fieldId), err)
+ReadFieldError:
+	return offset, thrift.PrependError(fmt.Sprintf("%T read field %d '%s' error: ", p, fieldId, fieldIDToName_OptimizeEvaluatorScore[fieldId]), err)
+SkipFieldError:
+	return offset, thrift.PrependError(fmt.Sprintf("%T field %d skip type %d error: ", p, fieldId, fieldTypeId), err)
+RequiredFieldNotSetError:
+	return offset, thrift.NewProtocolException(thrift.INVALID_DATA, fmt.Sprintf("required field %s is not set", fieldIDToName_OptimizeEvaluatorScore[fieldId]))
+}
+
+func (p *OptimizeEvaluatorScore) FastReadField1(buf []byte) (int, error) {
+	offset := 0
+
+	var _field int64
+	if v, l, err := thrift.Binary.ReadI64(buf[offset:]); err != nil {
+		return offset, err
+	} else {
+		offset += l
+		_field = v
+	}
+	p.EvaluatorVersionID = _field
+	return offset, nil
+}
+
+func (p *OptimizeEvaluatorScore) FastReadField2(buf []byte) (int, error) {
+	offset := 0
+
+	var _field *string
+	if v, l, err := thrift.Binary.ReadString(buf[offset:]); err != nil {
+		return offset, err
+	} else {
+		offset += l
+		_field = &v
+	}
+	p.EvaluatorName = _field
+	return offset, nil
+}
+
+func (p *OptimizeEvaluatorScore) FastReadField3(buf []byte) (int, error) {
+	offset := 0
+
+	var _field *float64
+	if v, l, err := thrift.Binary.ReadDouble(buf[offset:]); err != nil {
+		return offset, err
+	} else {
+		offset += l
+		_field = &v
+	}
+	p.BeforeScore = _field
+	return offset, nil
+}
+
+func (p *OptimizeEvaluatorScore) FastReadField4(buf []byte) (int, error) {
+	offset := 0
+
+	var _field *float64
+	if v, l, err := thrift.Binary.ReadDouble(buf[offset:]); err != nil {
+		return offset, err
+	} else {
+		offset += l
+		_field = &v
+	}
+	p.AfterScore = _field
+	return offset, nil
+}
+
+func (p *OptimizeEvaluatorScore) FastWrite(buf []byte) int {
+	return p.FastWriteNocopy(buf, nil)
+}
+
+func (p *OptimizeEvaluatorScore) FastWriteNocopy(buf []byte, w thrift.NocopyWriter) int {
+	offset := 0
+	if p != nil {
+		offset += p.fastWriteField1(buf[offset:], w)
+		offset += p.fastWriteField3(buf[offset:], w)
+		offset += p.fastWriteField4(buf[offset:], w)
+		offset += p.fastWriteField2(buf[offset:], w)
+	}
+	offset += thrift.Binary.WriteFieldStop(buf[offset:])
+	return offset
+}
+
+func (p *OptimizeEvaluatorScore) BLength() int {
+	l := 0
+	if p != nil {
+		l += p.field1Length()
+		l += p.field2Length()
+		l += p.field3Length()
+		l += p.field4Length()
+	}
+	l += thrift.Binary.FieldStopLength()
+	return l
+}
+
+func (p *OptimizeEvaluatorScore) fastWriteField1(buf []byte, w thrift.NocopyWriter) int {
+	offset := 0
+	offset += thrift.Binary.WriteFieldBegin(buf[offset:], thrift.I64, 1)
+	offset += thrift.Binary.WriteI64(buf[offset:], p.EvaluatorVersionID)
+	return offset
+}
+
+func (p *OptimizeEvaluatorScore) fastWriteField2(buf []byte, w thrift.NocopyWriter) int {
+	offset := 0
+	if p.IsSetEvaluatorName() {
+		offset += thrift.Binary.WriteFieldBegin(buf[offset:], thrift.STRING, 2)
+		offset += thrift.Binary.WriteStringNocopy(buf[offset:], w, *p.EvaluatorName)
+	}
+	return offset
+}
+
+func (p *OptimizeEvaluatorScore) fastWriteField3(buf []byte, w thrift.NocopyWriter) int {
+	offset := 0
+	if p.IsSetBeforeScore() {
+		offset += thrift.Binary.WriteFieldBegin(buf[offset:], thrift.DOUBLE, 3)
+		offset += thrift.Binary.WriteDouble(buf[offset:], *p.BeforeScore)
+	}
+	return offset
+}
+
+func (p *OptimizeEvaluatorScore) fastWriteField4(buf []byte, w thrift.NocopyWriter) int {
+	offset := 0
+	if p.IsSetAfterScore() {
+		offset += thrift.Binary.WriteFieldBegin(buf[offset:], thrift.DOUBLE, 4)
+		offset += thrift.Binary.WriteDouble(buf[offset:], *p.AfterScore)
+	}
+	return offset
+}
+
+func (p *OptimizeEvaluatorScore) field1Length() int {
+	l := 0
+	l += thrift.Binary.FieldBeginLength()
+	l += thrift.Binary.I64Length()
+	return l
+}
+
+func (p *OptimizeEvaluatorScore) field2Length() int {
+	l := 0
+	if p.IsSetEvaluatorName() {
+		l += thrift.Binary.FieldBeginLength()
+		l += thrift.Binary.StringLengthNocopy(*p.EvaluatorName)
+	}
+	return l
+}
+
+func (p *OptimizeEvaluatorScore) field3Length() int {
+	l := 0
+	if p.IsSetBeforeScore() {
+		l += thrift.Binary.FieldBeginLength()
+		l += thrift.Binary.DoubleLength()
+	}
+	return l
+}
+
+func (p *OptimizeEvaluatorScore) field4Length() int {
+	l := 0
+	if p.IsSetAfterScore() {
+		l += thrift.Binary.FieldBeginLength()
+		l += thrift.Binary.DoubleLength()
+	}
+	return l
+}
+
+func (p *OptimizeEvaluatorScore) DeepCopy(s interface{}) error {
+	src, ok := s.(*OptimizeEvaluatorScore)
+	if !ok {
+		return fmt.Errorf("%T's type not matched %T", s, p)
+	}
+
+	p.EvaluatorVersionID = src.EvaluatorVersionID
+
+	if src.EvaluatorName != nil {
+		var tmp string
+		if *src.EvaluatorName != "" {
+			tmp = kutils.StringDeepCopy(*src.EvaluatorName)
+		}
+		p.EvaluatorName = &tmp
+	}
+
+	if src.BeforeScore != nil {
+		tmp := *src.BeforeScore
+		p.BeforeScore = &tmp
+	}
+
+	if src.AfterScore != nil {
+		tmp := *src.AfterScore
+		p.AfterScore = &tmp
+	}
+
+	return nil
+}
+
 func (p *OptimizeCaseDetail) FastRead(buf []byte) (int, error) {
 
 	var err error
@@ -1297,6 +1789,20 @@ func (p *OptimizeCaseDetail) FastRead(buf []byte) (int, error) {
 		case 6:
 			if fieldTypeId == thrift.STRING {
 				l, err = p.FastReadField6(buf[offset:])
+				offset += l
+				if err != nil {
+					goto ReadFieldError
+				}
+			} else {
+				l, err = thrift.Binary.Skip(buf[offset:], fieldTypeId)
+				offset += l
+				if err != nil {
+					goto SkipFieldError
+				}
+			}
+		case 7:
+			if fieldTypeId == thrift.LIST {
+				l, err = p.FastReadField7(buf[offset:])
 				offset += l
 				if err != nil {
 					goto ReadFieldError
@@ -1416,6 +1922,31 @@ func (p *OptimizeCaseDetail) FastReadField6(buf []byte) (int, error) {
 	return offset, nil
 }
 
+func (p *OptimizeCaseDetail) FastReadField7(buf []byte) (int, error) {
+	offset := 0
+
+	_, size, l, err := thrift.Binary.ReadListBegin(buf[offset:])
+	offset += l
+	if err != nil {
+		return offset, err
+	}
+	_field := make([]*OptimizeEvaluatorScore, 0, size)
+	values := make([]OptimizeEvaluatorScore, size)
+	for i := 0; i < size; i++ {
+		_elem := &values[i]
+		_elem.InitDefault()
+		if l, err := _elem.FastRead(buf[offset:]); err != nil {
+			return offset, err
+		} else {
+			offset += l
+		}
+
+		_field = append(_field, _elem)
+	}
+	p.EvaluatorScores = _field
+	return offset, nil
+}
+
 func (p *OptimizeCaseDetail) FastWrite(buf []byte) int {
 	return p.FastWriteNocopy(buf, nil)
 }
@@ -1429,6 +1960,7 @@ func (p *OptimizeCaseDetail) FastWriteNocopy(buf []byte, w thrift.NocopyWriter) 
 		offset += p.fastWriteField4(buf[offset:], w)
 		offset += p.fastWriteField5(buf[offset:], w)
 		offset += p.fastWriteField6(buf[offset:], w)
+		offset += p.fastWriteField7(buf[offset:], w)
 	}
 	offset += thrift.Binary.WriteFieldStop(buf[offset:])
 	return offset
@@ -1443,6 +1975,7 @@ func (p *OptimizeCaseDetail) BLength() int {
 		l += p.field4Length()
 		l += p.field5Length()
 		l += p.field6Length()
+		l += p.field7Length()
 	}
 	l += thrift.Binary.FieldStopLength()
 	return l
@@ -1500,6 +2033,22 @@ func (p *OptimizeCaseDetail) fastWriteField6(buf []byte, w thrift.NocopyWriter) 
 	return offset
 }
 
+func (p *OptimizeCaseDetail) fastWriteField7(buf []byte, w thrift.NocopyWriter) int {
+	offset := 0
+	if p.IsSetEvaluatorScores() {
+		offset += thrift.Binary.WriteFieldBegin(buf[offset:], thrift.LIST, 7)
+		listBeginOffset := offset
+		offset += thrift.Binary.ListBeginLength()
+		var length int
+		for _, v := range p.EvaluatorScores {
+			length++
+			offset += v.FastWriteNocopy(buf[offset:], w)
+		}
+		thrift.Binary.WriteListBegin(buf[listBeginOffset:], thrift.STRUCT, length)
+	}
+	return offset
+}
+
 func (p *OptimizeCaseDetail) field1Length() int {
 	l := 0
 	l += thrift.Binary.FieldBeginLength()
@@ -1552,6 +2101,19 @@ func (p *OptimizeCaseDetail) field6Length() int {
 	return l
 }
 
+func (p *OptimizeCaseDetail) field7Length() int {
+	l := 0
+	if p.IsSetEvaluatorScores() {
+		l += thrift.Binary.FieldBeginLength()
+		l += thrift.Binary.ListBeginLength()
+		for _, v := range p.EvaluatorScores {
+			_ = v
+			l += v.BLength()
+		}
+	}
+	return l
+}
+
 func (p *OptimizeCaseDetail) DeepCopy(s interface{}) error {
 	src, ok := s.(*OptimizeCaseDetail)
 	if !ok {
@@ -1594,6 +2156,21 @@ func (p *OptimizeCaseDetail) DeepCopy(s interface{}) error {
 			tmp = kutils.StringDeepCopy(*src.Reference)
 		}
 		p.Reference = &tmp
+	}
+
+	if src.EvaluatorScores != nil {
+		p.EvaluatorScores = make([]*OptimizeEvaluatorScore, 0, len(src.EvaluatorScores))
+		for _, elem := range src.EvaluatorScores {
+			var _elem *OptimizeEvaluatorScore
+			if elem != nil {
+				_elem = &OptimizeEvaluatorScore{}
+				if err := _elem.DeepCopy(elem); err != nil {
+					return err
+				}
+			}
+
+			p.EvaluatorScores = append(p.EvaluatorScores, _elem)
+		}
 	}
 
 	return nil

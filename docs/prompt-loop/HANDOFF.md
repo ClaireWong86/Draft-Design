@@ -1,13 +1,13 @@
 # Prompt Loop — AI 交接文档（HANDOFF）
 
 > 给下一个 AI 编程工具 / 工程师：先读本文件，再按需深入 PRD/TRD/代码。  
-> 更新时间：2026-07-21（UTC+8，OptimizeTask Worker、Podman 数据恢复与登录错误语义修复）
+> 更新时间：2026-07-21（UTC+8，智能优化 1–5 闭环、Podman 数据恢复与登录错误语义修复）
 
 ---
 
 ## 1. 一句话现状
 
-Prompt Loop（Coze Loop fork）本地栈可跑；Prompt 详情已形成**编排、观测、评测、智能优化**四工作区。智能优化已接通 OptimizeTask IDL、MySQL、真实 API、可选优化模型和可恢复异步 Worker；前端默认使用真实客户端。当前 Worker 已完成诊断、候选生成和按选中 case 的临时执行；变量精确渲染、评估器重评、多轮选优仍待实现。
+Prompt Loop（Coze Loop fork）本地栈可跑；Prompt 详情已形成**编排、观测、评测、智能优化**四工作区。智能优化已接通 OptimizeTask IDL、MySQL、真实 API、可选优化模型和带租约的异步 Worker；实验路径已形成“变量渲染 → 原评估器重评 → 多候选/多轮 → 验证集选优 → 报告 → 采纳并提交新版”的真实闭环。
 
 ---
 
@@ -148,7 +148,11 @@ release/deployment/helm-chart/charts/app/bootstrap/init/mysql/init-sql/optimize_
 ```
 
 - API：Create/List/Get/Cancel；报告随 Get/List 的 `result` 返回。
-- Worker：持久化后异步 claim，调用用户选择的 `optimizer_model_id`，先按实验 ID 快照真实评测证据（input/actual/reference/evaluator result），生成候选并按选中 case 执行临时候选消息，支持取消、失败记录、周期扫描、重启恢复和 stale-running 重排。
+- Worker：持久化后异步 claim，调用用户选择的 `optimizer_model_id`，先按实验 ID 快照真实评测证据（input/actual/reference/evaluator result），生成候选并按选中 case 执行临时候选消息；变量会精确渲染到普通消息和多模态文本 part，随后复用实验里的 evaluator version 重评。
+- 根据模式使用 1–3 轮、每轮 2–3 个候选；固定拆分优化集/验证集，按验证集得分选优并在增益不足时停止。调用预算为 24/48/96 次，LLM 临时错误最多重试 3 次。
+- Worker claim 使用 `lease_token + lease_expires_at + attempt_count`；多实例原子认领、续租、过期重排，最多 3 次认领，旧 Worker 无权覆盖新 Worker 结果。
+- 字段映射支持显式 JSON path、显式 `reference_output_field`，以及 evaluator/分数上下界/仅非满分的服务端过滤。
+- 报告返回综合得分、分布、逐 case 与逐评估器 before/after；采纳完整消息后自动打开标准「提交新版」弹窗。
 - 前端 API Schema 已生成 `evaluationOptimize` 并合入 `StoneEvaluationApi`。
 - `OptimizeTaskResult` 的评分字段为 optional；当前没有执行重评时 UI 显示“候选已生成（待重评）”。
 
@@ -160,14 +164,11 @@ release/deployment/helm-chart/charts/app/bootstrap/init/mysql/init-sql/optimize_
 
 对照用户提供的扣子罗盘截图（实验页入口、「新建智能优化」选实验弹窗、带图标下拉）。
 
-### P0 — 产品流程
+### P0 — 产品流程（剩余）
 
-1. **Worker 第二阶段**：已接入证据快照、case 裁剪和逐 case 临时执行；仍需按字段映射渲染变量并复用评估器重评
-2. 多候选、多轮迭代、优化集/验证集拆分与增益停止条件
-3. 样本选择服务端过滤：非满分、评估器分数区间、跨多轮数据
-4. `reference_output` 根据 schema_key/显式映射识别，避免仅靠字段名启发式
-5. 评测集（Goodcase）路径接 `ListEvaluationSetVersions` / `ListEvaluationSetItems`
-6. 成本预算、重试次数、RocketMQ 多实例 Worker 与租约
+1. 评测集（Goodcase）路径接 `ListEvaluationSetVersions` / `ListEvaluationSetItems`；当前完整重评闭环以 experiment source 为准。
+2. evaluator 名称目前报告以 version ID 展示；后续可批量补齐展示名。
+3. 当前多实例调度采用 MySQL durable queue + lease，已具备正确性；若任务量增长再把唤醒信号迁移 RocketMQ，数据库仍作为事实源。
 
 候选执行方案已确定为方案 1：通过临时执行适配器直接传入完整候选 `messages[]`、变量值和多模态 parts，不创建持久化 Prompt 版本；契约见 TRD 6.4。
 
@@ -178,13 +179,13 @@ release/deployment/helm-chart/charts/app/bootstrap/init/mysql/init-sql/optimize_
 - 采纳后打开「提交新版」流  
 - 包 `Guard`；任务创建前做 Jinja2 / 多模态变量 / String 变量校验  
 
-### 建议下一迭代顺序
+### 2026-07-21 已按顺序完成
 
-1. 将 field mapping 中的 variables 精确渲染进候选 Prompt，并复用原评估器重评
-2. 优化集/验证集拆分，多候选、多轮迭代、验证集选优与增益停止
-3. 加任务级预算、重试/租约并迁移 RocketMQ 多实例消费
-4. 补服务端样本过滤与显式 `reference_output` 映射
-5. 报告补分布/评估器列，采纳后自动打开「提交新版」
+1. [x] field mapping 变量精确渲染，复用原评估器重评
+2. [x] 优化集/验证集拆分，多候选、多轮、验证集选优与增益停止
+3. [x] 任务级调用预算、LLM 重试、数据库租约与多实例安全认领
+4. [x] 服务端样本过滤与显式 `reference_output`/JSON path 映射
+5. [x] 报告分布/评估器列，采纳后打开「提交新版」
 
 ---
 
@@ -229,7 +230,7 @@ release/deployment/helm-chart/charts/app/bootstrap/init/mysql/init-sql/optimize_
 - [x] 按可解析的 case ID 精确裁剪实验结果证据
 - [x] 候选 Prompt 临时执行（按选中 case）
 - [x] 按 field mapping 构造每个 case 的 variables/evidence 载荷，并保存候选 actual_output
-- [ ] 将 variables 精确渲染进模板 / 原评估器重评 / 多轮验证选优
+- [x] 将 variables 精确渲染进模板 / 原评估器重评 / 多轮验证选优
 
 ### 本轮补充（2026-07-20）
 
@@ -256,5 +257,7 @@ cd frontend/packages/loop-pages/prompt-pages && rushx lint
 Podman 环境阻塞已于 2026-07-20 解除：新 machine `podman-loop-dev` 使用 rootful、持久化 VFS 隔离存储；Docker Hub 镜像、15 个 bootstrap/config 卷与完整 compose 服务均已就绪。实测 `:8888/ping` 返回 `pong`、`:8082` 返回 HTTP 200；Redis、MySQL、ClickHouse、MinIO、RocketMQ、Python/JS FaaS、app、nginx 均达到 healthy。旧 machine 和 `.local-migration/` 原始备份均保留。
 
 2026-07-21 修复登录错误语义：`GetUserByEmail` 将 `gorm.ErrRecordNotFound` 映射为 `UserNotExistCode`，未知邮箱在中文 Cookie 下返回“用户不存在”，真正的数据库故障才返回“MySQL错误”。本地运行镜像为 `docker.io/library/coze-loop:local-fix`；旧 `coze-loop-app-before-account-fix` 容器保留用于回滚。
+
+2026-07-21 智能优化 1–5 已编译并部署到同一 `docker.io/library/coze-loop:local-fix`。MySQL 已应用 `lease_token / lease_expires_at / attempt_count` 三列；部署前容器保留为 `coze-loop-app-before-optimize-20260721`。宿主端口通过持续 SSH 会话转发 8888/8082，实测 `/ping` 返回 `pong`、8082 返回 HTTP 200。
 
 IDL 已用项目锁定版本生成：Kitex `v0.13.1`、Hertz `v0.9.7`、ThriftGo `v0.4.1`，Wire `v0.6.0`。社区前端全量 `tsc -b` 仍被仓内既有的 `prompt-components-v2` SVG/CSS 与 `@/` alias 解析问题阻塞；筛选本轮目录后，仅剩同一既有 alias 问题，`smart-optimize` 组件本身无新增类型错误。

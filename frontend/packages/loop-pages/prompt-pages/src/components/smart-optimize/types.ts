@@ -39,6 +39,10 @@ export interface OptimizeFieldMapping {
   variable_fields: Array<{ field_name: string; from_field_name: string }>;
   actual_output_field?: string;
   reference_output_field?: string;
+  evaluator_version_id?: string;
+  score_min?: number;
+  score_max?: number;
+  only_failed?: boolean;
 }
 
 export interface OptimizeCaseDetail {
@@ -48,6 +52,12 @@ export interface OptimizeCaseDetail {
   before_actual?: string;
   after_actual?: string;
   reference?: string;
+  evaluator_scores?: Array<{
+    evaluator_version_id: string;
+    evaluator_name?: string;
+    before_score?: number;
+    after_score?: number;
+  }>;
 }
 
 export interface OptimizeTaskResult {

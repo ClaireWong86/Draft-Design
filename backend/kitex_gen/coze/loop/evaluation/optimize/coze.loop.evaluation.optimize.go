@@ -834,6 +834,10 @@ type OptimizeFieldMapping struct {
 	VariableFields       []*OptimizeVariableFieldMapping `thrift:"variable_fields,1,required" frugal:"1,required,list<OptimizeVariableFieldMapping>" form:"variable_fields,required" json:"variable_fields,required" query:"variable_fields,required"`
 	ActualOutputField    *string                         `thrift:"actual_output_field,2,optional" frugal:"2,optional,string" form:"actual_output_field" json:"actual_output_field,omitempty" query:"actual_output_field"`
 	ReferenceOutputField *string                         `thrift:"reference_output_field,3,optional" frugal:"3,optional,string" form:"reference_output_field" json:"reference_output_field,omitempty" query:"reference_output_field"`
+	EvaluatorVersionID   *int64                          `thrift:"evaluator_version_id,4,optional" frugal:"4,optional,i64" json:"evaluator_version_id" form:"evaluator_version_id" query:"evaluator_version_id"`
+	ScoreMin             *float64                        `thrift:"score_min,5,optional" frugal:"5,optional,double" form:"score_min" json:"score_min,omitempty" query:"score_min"`
+	ScoreMax             *float64                        `thrift:"score_max,6,optional" frugal:"6,optional,double" form:"score_max" json:"score_max,omitempty" query:"score_max"`
+	OnlyFailed           *bool                           `thrift:"only_failed,7,optional" frugal:"7,optional,bool" form:"only_failed" json:"only_failed,omitempty" query:"only_failed"`
 }
 
 func NewOptimizeFieldMapping() *OptimizeFieldMapping {
@@ -873,6 +877,54 @@ func (p *OptimizeFieldMapping) GetReferenceOutputField() (v string) {
 	}
 	return *p.ReferenceOutputField
 }
+
+var OptimizeFieldMapping_EvaluatorVersionID_DEFAULT int64
+
+func (p *OptimizeFieldMapping) GetEvaluatorVersionID() (v int64) {
+	if p == nil {
+		return
+	}
+	if !p.IsSetEvaluatorVersionID() {
+		return OptimizeFieldMapping_EvaluatorVersionID_DEFAULT
+	}
+	return *p.EvaluatorVersionID
+}
+
+var OptimizeFieldMapping_ScoreMin_DEFAULT float64
+
+func (p *OptimizeFieldMapping) GetScoreMin() (v float64) {
+	if p == nil {
+		return
+	}
+	if !p.IsSetScoreMin() {
+		return OptimizeFieldMapping_ScoreMin_DEFAULT
+	}
+	return *p.ScoreMin
+}
+
+var OptimizeFieldMapping_ScoreMax_DEFAULT float64
+
+func (p *OptimizeFieldMapping) GetScoreMax() (v float64) {
+	if p == nil {
+		return
+	}
+	if !p.IsSetScoreMax() {
+		return OptimizeFieldMapping_ScoreMax_DEFAULT
+	}
+	return *p.ScoreMax
+}
+
+var OptimizeFieldMapping_OnlyFailed_DEFAULT bool
+
+func (p *OptimizeFieldMapping) GetOnlyFailed() (v bool) {
+	if p == nil {
+		return
+	}
+	if !p.IsSetOnlyFailed() {
+		return OptimizeFieldMapping_OnlyFailed_DEFAULT
+	}
+	return *p.OnlyFailed
+}
 func (p *OptimizeFieldMapping) SetVariableFields(val []*OptimizeVariableFieldMapping) {
 	p.VariableFields = val
 }
@@ -882,11 +934,27 @@ func (p *OptimizeFieldMapping) SetActualOutputField(val *string) {
 func (p *OptimizeFieldMapping) SetReferenceOutputField(val *string) {
 	p.ReferenceOutputField = val
 }
+func (p *OptimizeFieldMapping) SetEvaluatorVersionID(val *int64) {
+	p.EvaluatorVersionID = val
+}
+func (p *OptimizeFieldMapping) SetScoreMin(val *float64) {
+	p.ScoreMin = val
+}
+func (p *OptimizeFieldMapping) SetScoreMax(val *float64) {
+	p.ScoreMax = val
+}
+func (p *OptimizeFieldMapping) SetOnlyFailed(val *bool) {
+	p.OnlyFailed = val
+}
 
 var fieldIDToName_OptimizeFieldMapping = map[int16]string{
 	1: "variable_fields",
 	2: "actual_output_field",
 	3: "reference_output_field",
+	4: "evaluator_version_id",
+	5: "score_min",
+	6: "score_max",
+	7: "only_failed",
 }
 
 func (p *OptimizeFieldMapping) IsSetActualOutputField() bool {
@@ -895,6 +963,22 @@ func (p *OptimizeFieldMapping) IsSetActualOutputField() bool {
 
 func (p *OptimizeFieldMapping) IsSetReferenceOutputField() bool {
 	return p.ReferenceOutputField != nil
+}
+
+func (p *OptimizeFieldMapping) IsSetEvaluatorVersionID() bool {
+	return p.EvaluatorVersionID != nil
+}
+
+func (p *OptimizeFieldMapping) IsSetScoreMin() bool {
+	return p.ScoreMin != nil
+}
+
+func (p *OptimizeFieldMapping) IsSetScoreMax() bool {
+	return p.ScoreMax != nil
+}
+
+func (p *OptimizeFieldMapping) IsSetOnlyFailed() bool {
+	return p.OnlyFailed != nil
 }
 
 func (p *OptimizeFieldMapping) Read(iprot thrift.TProtocol) (err error) {
@@ -936,6 +1020,38 @@ func (p *OptimizeFieldMapping) Read(iprot thrift.TProtocol) (err error) {
 		case 3:
 			if fieldTypeId == thrift.STRING {
 				if err = p.ReadField3(iprot); err != nil {
+					goto ReadFieldError
+				}
+			} else if err = iprot.Skip(fieldTypeId); err != nil {
+				goto SkipFieldError
+			}
+		case 4:
+			if fieldTypeId == thrift.I64 {
+				if err = p.ReadField4(iprot); err != nil {
+					goto ReadFieldError
+				}
+			} else if err = iprot.Skip(fieldTypeId); err != nil {
+				goto SkipFieldError
+			}
+		case 5:
+			if fieldTypeId == thrift.DOUBLE {
+				if err = p.ReadField5(iprot); err != nil {
+					goto ReadFieldError
+				}
+			} else if err = iprot.Skip(fieldTypeId); err != nil {
+				goto SkipFieldError
+			}
+		case 6:
+			if fieldTypeId == thrift.DOUBLE {
+				if err = p.ReadField6(iprot); err != nil {
+					goto ReadFieldError
+				}
+			} else if err = iprot.Skip(fieldTypeId); err != nil {
+				goto SkipFieldError
+			}
+		case 7:
+			if fieldTypeId == thrift.BOOL {
+				if err = p.ReadField7(iprot); err != nil {
 					goto ReadFieldError
 				}
 			} else if err = iprot.Skip(fieldTypeId); err != nil {
@@ -1021,6 +1137,50 @@ func (p *OptimizeFieldMapping) ReadField3(iprot thrift.TProtocol) error {
 	p.ReferenceOutputField = _field
 	return nil
 }
+func (p *OptimizeFieldMapping) ReadField4(iprot thrift.TProtocol) error {
+
+	var _field *int64
+	if v, err := iprot.ReadI64(); err != nil {
+		return err
+	} else {
+		_field = &v
+	}
+	p.EvaluatorVersionID = _field
+	return nil
+}
+func (p *OptimizeFieldMapping) ReadField5(iprot thrift.TProtocol) error {
+
+	var _field *float64
+	if v, err := iprot.ReadDouble(); err != nil {
+		return err
+	} else {
+		_field = &v
+	}
+	p.ScoreMin = _field
+	return nil
+}
+func (p *OptimizeFieldMapping) ReadField6(iprot thrift.TProtocol) error {
+
+	var _field *float64
+	if v, err := iprot.ReadDouble(); err != nil {
+		return err
+	} else {
+		_field = &v
+	}
+	p.ScoreMax = _field
+	return nil
+}
+func (p *OptimizeFieldMapping) ReadField7(iprot thrift.TProtocol) error {
+
+	var _field *bool
+	if v, err := iprot.ReadBool(); err != nil {
+		return err
+	} else {
+		_field = &v
+	}
+	p.OnlyFailed = _field
+	return nil
+}
 
 func (p *OptimizeFieldMapping) Write(oprot thrift.TProtocol) (err error) {
 	var fieldId int16
@@ -1038,6 +1198,22 @@ func (p *OptimizeFieldMapping) Write(oprot thrift.TProtocol) (err error) {
 		}
 		if err = p.writeField3(oprot); err != nil {
 			fieldId = 3
+			goto WriteFieldError
+		}
+		if err = p.writeField4(oprot); err != nil {
+			fieldId = 4
+			goto WriteFieldError
+		}
+		if err = p.writeField5(oprot); err != nil {
+			fieldId = 5
+			goto WriteFieldError
+		}
+		if err = p.writeField6(oprot); err != nil {
+			fieldId = 6
+			goto WriteFieldError
+		}
+		if err = p.writeField7(oprot); err != nil {
+			fieldId = 7
 			goto WriteFieldError
 		}
 	}
@@ -1118,6 +1294,78 @@ WriteFieldBeginError:
 WriteFieldEndError:
 	return thrift.PrependError(fmt.Sprintf("%T write field 3 end error: ", p), err)
 }
+func (p *OptimizeFieldMapping) writeField4(oprot thrift.TProtocol) (err error) {
+	if p.IsSetEvaluatorVersionID() {
+		if err = oprot.WriteFieldBegin("evaluator_version_id", thrift.I64, 4); err != nil {
+			goto WriteFieldBeginError
+		}
+		if err := oprot.WriteI64(*p.EvaluatorVersionID); err != nil {
+			return err
+		}
+		if err = oprot.WriteFieldEnd(); err != nil {
+			goto WriteFieldEndError
+		}
+	}
+	return nil
+WriteFieldBeginError:
+	return thrift.PrependError(fmt.Sprintf("%T write field 4 begin error: ", p), err)
+WriteFieldEndError:
+	return thrift.PrependError(fmt.Sprintf("%T write field 4 end error: ", p), err)
+}
+func (p *OptimizeFieldMapping) writeField5(oprot thrift.TProtocol) (err error) {
+	if p.IsSetScoreMin() {
+		if err = oprot.WriteFieldBegin("score_min", thrift.DOUBLE, 5); err != nil {
+			goto WriteFieldBeginError
+		}
+		if err := oprot.WriteDouble(*p.ScoreMin); err != nil {
+			return err
+		}
+		if err = oprot.WriteFieldEnd(); err != nil {
+			goto WriteFieldEndError
+		}
+	}
+	return nil
+WriteFieldBeginError:
+	return thrift.PrependError(fmt.Sprintf("%T write field 5 begin error: ", p), err)
+WriteFieldEndError:
+	return thrift.PrependError(fmt.Sprintf("%T write field 5 end error: ", p), err)
+}
+func (p *OptimizeFieldMapping) writeField6(oprot thrift.TProtocol) (err error) {
+	if p.IsSetScoreMax() {
+		if err = oprot.WriteFieldBegin("score_max", thrift.DOUBLE, 6); err != nil {
+			goto WriteFieldBeginError
+		}
+		if err := oprot.WriteDouble(*p.ScoreMax); err != nil {
+			return err
+		}
+		if err = oprot.WriteFieldEnd(); err != nil {
+			goto WriteFieldEndError
+		}
+	}
+	return nil
+WriteFieldBeginError:
+	return thrift.PrependError(fmt.Sprintf("%T write field 6 begin error: ", p), err)
+WriteFieldEndError:
+	return thrift.PrependError(fmt.Sprintf("%T write field 6 end error: ", p), err)
+}
+func (p *OptimizeFieldMapping) writeField7(oprot thrift.TProtocol) (err error) {
+	if p.IsSetOnlyFailed() {
+		if err = oprot.WriteFieldBegin("only_failed", thrift.BOOL, 7); err != nil {
+			goto WriteFieldBeginError
+		}
+		if err := oprot.WriteBool(*p.OnlyFailed); err != nil {
+			return err
+		}
+		if err = oprot.WriteFieldEnd(); err != nil {
+			goto WriteFieldEndError
+		}
+	}
+	return nil
+WriteFieldBeginError:
+	return thrift.PrependError(fmt.Sprintf("%T write field 7 begin error: ", p), err)
+WriteFieldEndError:
+	return thrift.PrependError(fmt.Sprintf("%T write field 7 end error: ", p), err)
+}
 
 func (p *OptimizeFieldMapping) String() string {
 	if p == nil {
@@ -1140,6 +1388,18 @@ func (p *OptimizeFieldMapping) DeepEqual(ano *OptimizeFieldMapping) bool {
 		return false
 	}
 	if !p.Field3DeepEqual(ano.ReferenceOutputField) {
+		return false
+	}
+	if !p.Field4DeepEqual(ano.EvaluatorVersionID) {
+		return false
+	}
+	if !p.Field5DeepEqual(ano.ScoreMin) {
+		return false
+	}
+	if !p.Field6DeepEqual(ano.ScoreMax) {
+		return false
+	}
+	if !p.Field7DeepEqual(ano.OnlyFailed) {
 		return false
 	}
 	return true
@@ -1178,6 +1438,54 @@ func (p *OptimizeFieldMapping) Field3DeepEqual(src *string) bool {
 		return false
 	}
 	if strings.Compare(*p.ReferenceOutputField, *src) != 0 {
+		return false
+	}
+	return true
+}
+func (p *OptimizeFieldMapping) Field4DeepEqual(src *int64) bool {
+
+	if p.EvaluatorVersionID == src {
+		return true
+	} else if p.EvaluatorVersionID == nil || src == nil {
+		return false
+	}
+	if *p.EvaluatorVersionID != *src {
+		return false
+	}
+	return true
+}
+func (p *OptimizeFieldMapping) Field5DeepEqual(src *float64) bool {
+
+	if p.ScoreMin == src {
+		return true
+	} else if p.ScoreMin == nil || src == nil {
+		return false
+	}
+	if *p.ScoreMin != *src {
+		return false
+	}
+	return true
+}
+func (p *OptimizeFieldMapping) Field6DeepEqual(src *float64) bool {
+
+	if p.ScoreMax == src {
+		return true
+	} else if p.ScoreMax == nil || src == nil {
+		return false
+	}
+	if *p.ScoreMax != *src {
+		return false
+	}
+	return true
+}
+func (p *OptimizeFieldMapping) Field7DeepEqual(src *bool) bool {
+
+	if p.OnlyFailed == src {
+		return true
+	} else if p.OnlyFailed == nil || src == nil {
+		return false
+	}
+	if *p.OnlyFailed != *src {
 		return false
 	}
 	return true
@@ -1625,13 +1933,418 @@ func (p *OptimizePromptSnapshot) Field4DeepEqual(src []*prompt.VariableDef) bool
 	return true
 }
 
+type OptimizeEvaluatorScore struct {
+	EvaluatorVersionID int64    `thrift:"evaluator_version_id,1,required" frugal:"1,required,i64" json:"evaluator_version_id" form:"evaluator_version_id,required" query:"evaluator_version_id,required"`
+	EvaluatorName      *string  `thrift:"evaluator_name,2,optional" frugal:"2,optional,string" form:"evaluator_name" json:"evaluator_name,omitempty" query:"evaluator_name"`
+	BeforeScore        *float64 `thrift:"before_score,3,optional" frugal:"3,optional,double" form:"before_score" json:"before_score,omitempty" query:"before_score"`
+	AfterScore         *float64 `thrift:"after_score,4,optional" frugal:"4,optional,double" form:"after_score" json:"after_score,omitempty" query:"after_score"`
+}
+
+func NewOptimizeEvaluatorScore() *OptimizeEvaluatorScore {
+	return &OptimizeEvaluatorScore{}
+}
+
+func (p *OptimizeEvaluatorScore) InitDefault() {
+}
+
+func (p *OptimizeEvaluatorScore) GetEvaluatorVersionID() (v int64) {
+	if p != nil {
+		return p.EvaluatorVersionID
+	}
+	return
+}
+
+var OptimizeEvaluatorScore_EvaluatorName_DEFAULT string
+
+func (p *OptimizeEvaluatorScore) GetEvaluatorName() (v string) {
+	if p == nil {
+		return
+	}
+	if !p.IsSetEvaluatorName() {
+		return OptimizeEvaluatorScore_EvaluatorName_DEFAULT
+	}
+	return *p.EvaluatorName
+}
+
+var OptimizeEvaluatorScore_BeforeScore_DEFAULT float64
+
+func (p *OptimizeEvaluatorScore) GetBeforeScore() (v float64) {
+	if p == nil {
+		return
+	}
+	if !p.IsSetBeforeScore() {
+		return OptimizeEvaluatorScore_BeforeScore_DEFAULT
+	}
+	return *p.BeforeScore
+}
+
+var OptimizeEvaluatorScore_AfterScore_DEFAULT float64
+
+func (p *OptimizeEvaluatorScore) GetAfterScore() (v float64) {
+	if p == nil {
+		return
+	}
+	if !p.IsSetAfterScore() {
+		return OptimizeEvaluatorScore_AfterScore_DEFAULT
+	}
+	return *p.AfterScore
+}
+func (p *OptimizeEvaluatorScore) SetEvaluatorVersionID(val int64) {
+	p.EvaluatorVersionID = val
+}
+func (p *OptimizeEvaluatorScore) SetEvaluatorName(val *string) {
+	p.EvaluatorName = val
+}
+func (p *OptimizeEvaluatorScore) SetBeforeScore(val *float64) {
+	p.BeforeScore = val
+}
+func (p *OptimizeEvaluatorScore) SetAfterScore(val *float64) {
+	p.AfterScore = val
+}
+
+var fieldIDToName_OptimizeEvaluatorScore = map[int16]string{
+	1: "evaluator_version_id",
+	2: "evaluator_name",
+	3: "before_score",
+	4: "after_score",
+}
+
+func (p *OptimizeEvaluatorScore) IsSetEvaluatorName() bool {
+	return p.EvaluatorName != nil
+}
+
+func (p *OptimizeEvaluatorScore) IsSetBeforeScore() bool {
+	return p.BeforeScore != nil
+}
+
+func (p *OptimizeEvaluatorScore) IsSetAfterScore() bool {
+	return p.AfterScore != nil
+}
+
+func (p *OptimizeEvaluatorScore) Read(iprot thrift.TProtocol) (err error) {
+	var fieldTypeId thrift.TType
+	var fieldId int16
+	var issetEvaluatorVersionID bool = false
+
+	if _, err = iprot.ReadStructBegin(); err != nil {
+		goto ReadStructBeginError
+	}
+
+	for {
+		_, fieldTypeId, fieldId, err = iprot.ReadFieldBegin()
+		if err != nil {
+			goto ReadFieldBeginError
+		}
+		if fieldTypeId == thrift.STOP {
+			break
+		}
+
+		switch fieldId {
+		case 1:
+			if fieldTypeId == thrift.I64 {
+				if err = p.ReadField1(iprot); err != nil {
+					goto ReadFieldError
+				}
+				issetEvaluatorVersionID = true
+			} else if err = iprot.Skip(fieldTypeId); err != nil {
+				goto SkipFieldError
+			}
+		case 2:
+			if fieldTypeId == thrift.STRING {
+				if err = p.ReadField2(iprot); err != nil {
+					goto ReadFieldError
+				}
+			} else if err = iprot.Skip(fieldTypeId); err != nil {
+				goto SkipFieldError
+			}
+		case 3:
+			if fieldTypeId == thrift.DOUBLE {
+				if err = p.ReadField3(iprot); err != nil {
+					goto ReadFieldError
+				}
+			} else if err = iprot.Skip(fieldTypeId); err != nil {
+				goto SkipFieldError
+			}
+		case 4:
+			if fieldTypeId == thrift.DOUBLE {
+				if err = p.ReadField4(iprot); err != nil {
+					goto ReadFieldError
+				}
+			} else if err = iprot.Skip(fieldTypeId); err != nil {
+				goto SkipFieldError
+			}
+		default:
+			if err = iprot.Skip(fieldTypeId); err != nil {
+				goto SkipFieldError
+			}
+		}
+		if err = iprot.ReadFieldEnd(); err != nil {
+			goto ReadFieldEndError
+		}
+	}
+	if err = iprot.ReadStructEnd(); err != nil {
+		goto ReadStructEndError
+	}
+
+	if !issetEvaluatorVersionID {
+		fieldId = 1
+		goto RequiredFieldNotSetError
+	}
+	return nil
+ReadStructBeginError:
+	return thrift.PrependError(fmt.Sprintf("%T read struct begin error: ", p), err)
+ReadFieldBeginError:
+	return thrift.PrependError(fmt.Sprintf("%T read field %d begin error: ", p, fieldId), err)
+ReadFieldError:
+	return thrift.PrependError(fmt.Sprintf("%T read field %d '%s' error: ", p, fieldId, fieldIDToName_OptimizeEvaluatorScore[fieldId]), err)
+SkipFieldError:
+	return thrift.PrependError(fmt.Sprintf("%T field %d skip type %d error: ", p, fieldId, fieldTypeId), err)
+
+ReadFieldEndError:
+	return thrift.PrependError(fmt.Sprintf("%T read field end error", p), err)
+ReadStructEndError:
+	return thrift.PrependError(fmt.Sprintf("%T read struct end error: ", p), err)
+RequiredFieldNotSetError:
+	return thrift.NewTProtocolExceptionWithType(thrift.INVALID_DATA, fmt.Errorf("required field %s is not set", fieldIDToName_OptimizeEvaluatorScore[fieldId]))
+}
+
+func (p *OptimizeEvaluatorScore) ReadField1(iprot thrift.TProtocol) error {
+
+	var _field int64
+	if v, err := iprot.ReadI64(); err != nil {
+		return err
+	} else {
+		_field = v
+	}
+	p.EvaluatorVersionID = _field
+	return nil
+}
+func (p *OptimizeEvaluatorScore) ReadField2(iprot thrift.TProtocol) error {
+
+	var _field *string
+	if v, err := iprot.ReadString(); err != nil {
+		return err
+	} else {
+		_field = &v
+	}
+	p.EvaluatorName = _field
+	return nil
+}
+func (p *OptimizeEvaluatorScore) ReadField3(iprot thrift.TProtocol) error {
+
+	var _field *float64
+	if v, err := iprot.ReadDouble(); err != nil {
+		return err
+	} else {
+		_field = &v
+	}
+	p.BeforeScore = _field
+	return nil
+}
+func (p *OptimizeEvaluatorScore) ReadField4(iprot thrift.TProtocol) error {
+
+	var _field *float64
+	if v, err := iprot.ReadDouble(); err != nil {
+		return err
+	} else {
+		_field = &v
+	}
+	p.AfterScore = _field
+	return nil
+}
+
+func (p *OptimizeEvaluatorScore) Write(oprot thrift.TProtocol) (err error) {
+	var fieldId int16
+	if err = oprot.WriteStructBegin("OptimizeEvaluatorScore"); err != nil {
+		goto WriteStructBeginError
+	}
+	if p != nil {
+		if err = p.writeField1(oprot); err != nil {
+			fieldId = 1
+			goto WriteFieldError
+		}
+		if err = p.writeField2(oprot); err != nil {
+			fieldId = 2
+			goto WriteFieldError
+		}
+		if err = p.writeField3(oprot); err != nil {
+			fieldId = 3
+			goto WriteFieldError
+		}
+		if err = p.writeField4(oprot); err != nil {
+			fieldId = 4
+			goto WriteFieldError
+		}
+	}
+	if err = oprot.WriteFieldStop(); err != nil {
+		goto WriteFieldStopError
+	}
+	if err = oprot.WriteStructEnd(); err != nil {
+		goto WriteStructEndError
+	}
+	return nil
+WriteStructBeginError:
+	return thrift.PrependError(fmt.Sprintf("%T write struct begin error: ", p), err)
+WriteFieldError:
+	return thrift.PrependError(fmt.Sprintf("%T write field %d error: ", p, fieldId), err)
+WriteFieldStopError:
+	return thrift.PrependError(fmt.Sprintf("%T write field stop error: ", p), err)
+WriteStructEndError:
+	return thrift.PrependError(fmt.Sprintf("%T write struct end error: ", p), err)
+}
+
+func (p *OptimizeEvaluatorScore) writeField1(oprot thrift.TProtocol) (err error) {
+	if err = oprot.WriteFieldBegin("evaluator_version_id", thrift.I64, 1); err != nil {
+		goto WriteFieldBeginError
+	}
+	if err := oprot.WriteI64(p.EvaluatorVersionID); err != nil {
+		return err
+	}
+	if err = oprot.WriteFieldEnd(); err != nil {
+		goto WriteFieldEndError
+	}
+	return nil
+WriteFieldBeginError:
+	return thrift.PrependError(fmt.Sprintf("%T write field 1 begin error: ", p), err)
+WriteFieldEndError:
+	return thrift.PrependError(fmt.Sprintf("%T write field 1 end error: ", p), err)
+}
+func (p *OptimizeEvaluatorScore) writeField2(oprot thrift.TProtocol) (err error) {
+	if p.IsSetEvaluatorName() {
+		if err = oprot.WriteFieldBegin("evaluator_name", thrift.STRING, 2); err != nil {
+			goto WriteFieldBeginError
+		}
+		if err := oprot.WriteString(*p.EvaluatorName); err != nil {
+			return err
+		}
+		if err = oprot.WriteFieldEnd(); err != nil {
+			goto WriteFieldEndError
+		}
+	}
+	return nil
+WriteFieldBeginError:
+	return thrift.PrependError(fmt.Sprintf("%T write field 2 begin error: ", p), err)
+WriteFieldEndError:
+	return thrift.PrependError(fmt.Sprintf("%T write field 2 end error: ", p), err)
+}
+func (p *OptimizeEvaluatorScore) writeField3(oprot thrift.TProtocol) (err error) {
+	if p.IsSetBeforeScore() {
+		if err = oprot.WriteFieldBegin("before_score", thrift.DOUBLE, 3); err != nil {
+			goto WriteFieldBeginError
+		}
+		if err := oprot.WriteDouble(*p.BeforeScore); err != nil {
+			return err
+		}
+		if err = oprot.WriteFieldEnd(); err != nil {
+			goto WriteFieldEndError
+		}
+	}
+	return nil
+WriteFieldBeginError:
+	return thrift.PrependError(fmt.Sprintf("%T write field 3 begin error: ", p), err)
+WriteFieldEndError:
+	return thrift.PrependError(fmt.Sprintf("%T write field 3 end error: ", p), err)
+}
+func (p *OptimizeEvaluatorScore) writeField4(oprot thrift.TProtocol) (err error) {
+	if p.IsSetAfterScore() {
+		if err = oprot.WriteFieldBegin("after_score", thrift.DOUBLE, 4); err != nil {
+			goto WriteFieldBeginError
+		}
+		if err := oprot.WriteDouble(*p.AfterScore); err != nil {
+			return err
+		}
+		if err = oprot.WriteFieldEnd(); err != nil {
+			goto WriteFieldEndError
+		}
+	}
+	return nil
+WriteFieldBeginError:
+	return thrift.PrependError(fmt.Sprintf("%T write field 4 begin error: ", p), err)
+WriteFieldEndError:
+	return thrift.PrependError(fmt.Sprintf("%T write field 4 end error: ", p), err)
+}
+
+func (p *OptimizeEvaluatorScore) String() string {
+	if p == nil {
+		return "<nil>"
+	}
+	return fmt.Sprintf("OptimizeEvaluatorScore(%+v)", *p)
+
+}
+
+func (p *OptimizeEvaluatorScore) DeepEqual(ano *OptimizeEvaluatorScore) bool {
+	if p == ano {
+		return true
+	} else if p == nil || ano == nil {
+		return false
+	}
+	if !p.Field1DeepEqual(ano.EvaluatorVersionID) {
+		return false
+	}
+	if !p.Field2DeepEqual(ano.EvaluatorName) {
+		return false
+	}
+	if !p.Field3DeepEqual(ano.BeforeScore) {
+		return false
+	}
+	if !p.Field4DeepEqual(ano.AfterScore) {
+		return false
+	}
+	return true
+}
+
+func (p *OptimizeEvaluatorScore) Field1DeepEqual(src int64) bool {
+
+	if p.EvaluatorVersionID != src {
+		return false
+	}
+	return true
+}
+func (p *OptimizeEvaluatorScore) Field2DeepEqual(src *string) bool {
+
+	if p.EvaluatorName == src {
+		return true
+	} else if p.EvaluatorName == nil || src == nil {
+		return false
+	}
+	if strings.Compare(*p.EvaluatorName, *src) != 0 {
+		return false
+	}
+	return true
+}
+func (p *OptimizeEvaluatorScore) Field3DeepEqual(src *float64) bool {
+
+	if p.BeforeScore == src {
+		return true
+	} else if p.BeforeScore == nil || src == nil {
+		return false
+	}
+	if *p.BeforeScore != *src {
+		return false
+	}
+	return true
+}
+func (p *OptimizeEvaluatorScore) Field4DeepEqual(src *float64) bool {
+
+	if p.AfterScore == src {
+		return true
+	} else if p.AfterScore == nil || src == nil {
+		return false
+	}
+	if *p.AfterScore != *src {
+		return false
+	}
+	return true
+}
+
 type OptimizeCaseDetail struct {
-	CaseID       string   `thrift:"case_id,1,required" frugal:"1,required,string" form:"case_id,required" json:"case_id,required" query:"case_id,required"`
-	BeforeScore  *float64 `thrift:"before_score,2,optional" frugal:"2,optional,double" form:"before_score" json:"before_score,omitempty" query:"before_score"`
-	AfterScore   *float64 `thrift:"after_score,3,optional" frugal:"3,optional,double" form:"after_score" json:"after_score,omitempty" query:"after_score"`
-	BeforeActual *string  `thrift:"before_actual,4,optional" frugal:"4,optional,string" form:"before_actual" json:"before_actual,omitempty" query:"before_actual"`
-	AfterActual  *string  `thrift:"after_actual,5,optional" frugal:"5,optional,string" form:"after_actual" json:"after_actual,omitempty" query:"after_actual"`
-	Reference    *string  `thrift:"reference,6,optional" frugal:"6,optional,string" form:"reference" json:"reference,omitempty" query:"reference"`
+	CaseID          string                    `thrift:"case_id,1,required" frugal:"1,required,string" form:"case_id,required" json:"case_id,required" query:"case_id,required"`
+	BeforeScore     *float64                  `thrift:"before_score,2,optional" frugal:"2,optional,double" form:"before_score" json:"before_score,omitempty" query:"before_score"`
+	AfterScore      *float64                  `thrift:"after_score,3,optional" frugal:"3,optional,double" form:"after_score" json:"after_score,omitempty" query:"after_score"`
+	BeforeActual    *string                   `thrift:"before_actual,4,optional" frugal:"4,optional,string" form:"before_actual" json:"before_actual,omitempty" query:"before_actual"`
+	AfterActual     *string                   `thrift:"after_actual,5,optional" frugal:"5,optional,string" form:"after_actual" json:"after_actual,omitempty" query:"after_actual"`
+	Reference       *string                   `thrift:"reference,6,optional" frugal:"6,optional,string" form:"reference" json:"reference,omitempty" query:"reference"`
+	EvaluatorScores []*OptimizeEvaluatorScore `thrift:"evaluator_scores,7,optional" frugal:"7,optional,list<OptimizeEvaluatorScore>" form:"evaluator_scores" json:"evaluator_scores,omitempty" query:"evaluator_scores"`
 }
 
 func NewOptimizeCaseDetail() *OptimizeCaseDetail {
@@ -1707,6 +2420,18 @@ func (p *OptimizeCaseDetail) GetReference() (v string) {
 	}
 	return *p.Reference
 }
+
+var OptimizeCaseDetail_EvaluatorScores_DEFAULT []*OptimizeEvaluatorScore
+
+func (p *OptimizeCaseDetail) GetEvaluatorScores() (v []*OptimizeEvaluatorScore) {
+	if p == nil {
+		return
+	}
+	if !p.IsSetEvaluatorScores() {
+		return OptimizeCaseDetail_EvaluatorScores_DEFAULT
+	}
+	return p.EvaluatorScores
+}
 func (p *OptimizeCaseDetail) SetCaseID(val string) {
 	p.CaseID = val
 }
@@ -1725,6 +2450,9 @@ func (p *OptimizeCaseDetail) SetAfterActual(val *string) {
 func (p *OptimizeCaseDetail) SetReference(val *string) {
 	p.Reference = val
 }
+func (p *OptimizeCaseDetail) SetEvaluatorScores(val []*OptimizeEvaluatorScore) {
+	p.EvaluatorScores = val
+}
 
 var fieldIDToName_OptimizeCaseDetail = map[int16]string{
 	1: "case_id",
@@ -1733,6 +2461,7 @@ var fieldIDToName_OptimizeCaseDetail = map[int16]string{
 	4: "before_actual",
 	5: "after_actual",
 	6: "reference",
+	7: "evaluator_scores",
 }
 
 func (p *OptimizeCaseDetail) IsSetBeforeScore() bool {
@@ -1753,6 +2482,10 @@ func (p *OptimizeCaseDetail) IsSetAfterActual() bool {
 
 func (p *OptimizeCaseDetail) IsSetReference() bool {
 	return p.Reference != nil
+}
+
+func (p *OptimizeCaseDetail) IsSetEvaluatorScores() bool {
+	return p.EvaluatorScores != nil
 }
 
 func (p *OptimizeCaseDetail) Read(iprot thrift.TProtocol) (err error) {
@@ -1818,6 +2551,14 @@ func (p *OptimizeCaseDetail) Read(iprot thrift.TProtocol) (err error) {
 		case 6:
 			if fieldTypeId == thrift.STRING {
 				if err = p.ReadField6(iprot); err != nil {
+					goto ReadFieldError
+				}
+			} else if err = iprot.Skip(fieldTypeId); err != nil {
+				goto SkipFieldError
+			}
+		case 7:
+			if fieldTypeId == thrift.LIST {
+				if err = p.ReadField7(iprot); err != nil {
 					goto ReadFieldError
 				}
 			} else if err = iprot.Skip(fieldTypeId); err != nil {
@@ -1924,6 +2665,29 @@ func (p *OptimizeCaseDetail) ReadField6(iprot thrift.TProtocol) error {
 	p.Reference = _field
 	return nil
 }
+func (p *OptimizeCaseDetail) ReadField7(iprot thrift.TProtocol) error {
+	_, size, err := iprot.ReadListBegin()
+	if err != nil {
+		return err
+	}
+	_field := make([]*OptimizeEvaluatorScore, 0, size)
+	values := make([]OptimizeEvaluatorScore, size)
+	for i := 0; i < size; i++ {
+		_elem := &values[i]
+		_elem.InitDefault()
+
+		if err := _elem.Read(iprot); err != nil {
+			return err
+		}
+
+		_field = append(_field, _elem)
+	}
+	if err := iprot.ReadListEnd(); err != nil {
+		return err
+	}
+	p.EvaluatorScores = _field
+	return nil
+}
 
 func (p *OptimizeCaseDetail) Write(oprot thrift.TProtocol) (err error) {
 	var fieldId int16
@@ -1953,6 +2717,10 @@ func (p *OptimizeCaseDetail) Write(oprot thrift.TProtocol) (err error) {
 		}
 		if err = p.writeField6(oprot); err != nil {
 			fieldId = 6
+			goto WriteFieldError
+		}
+		if err = p.writeField7(oprot); err != nil {
+			fieldId = 7
 			goto WriteFieldError
 		}
 	}
@@ -2079,6 +2847,32 @@ WriteFieldBeginError:
 WriteFieldEndError:
 	return thrift.PrependError(fmt.Sprintf("%T write field 6 end error: ", p), err)
 }
+func (p *OptimizeCaseDetail) writeField7(oprot thrift.TProtocol) (err error) {
+	if p.IsSetEvaluatorScores() {
+		if err = oprot.WriteFieldBegin("evaluator_scores", thrift.LIST, 7); err != nil {
+			goto WriteFieldBeginError
+		}
+		if err := oprot.WriteListBegin(thrift.STRUCT, len(p.EvaluatorScores)); err != nil {
+			return err
+		}
+		for _, v := range p.EvaluatorScores {
+			if err := v.Write(oprot); err != nil {
+				return err
+			}
+		}
+		if err := oprot.WriteListEnd(); err != nil {
+			return err
+		}
+		if err = oprot.WriteFieldEnd(); err != nil {
+			goto WriteFieldEndError
+		}
+	}
+	return nil
+WriteFieldBeginError:
+	return thrift.PrependError(fmt.Sprintf("%T write field 7 begin error: ", p), err)
+WriteFieldEndError:
+	return thrift.PrependError(fmt.Sprintf("%T write field 7 end error: ", p), err)
+}
 
 func (p *OptimizeCaseDetail) String() string {
 	if p == nil {
@@ -2110,6 +2904,9 @@ func (p *OptimizeCaseDetail) DeepEqual(ano *OptimizeCaseDetail) bool {
 		return false
 	}
 	if !p.Field6DeepEqual(ano.Reference) {
+		return false
+	}
+	if !p.Field7DeepEqual(ano.EvaluatorScores) {
 		return false
 	}
 	return true
@@ -2179,6 +2976,19 @@ func (p *OptimizeCaseDetail) Field6DeepEqual(src *string) bool {
 	}
 	if strings.Compare(*p.Reference, *src) != 0 {
 		return false
+	}
+	return true
+}
+func (p *OptimizeCaseDetail) Field7DeepEqual(src []*OptimizeEvaluatorScore) bool {
+
+	if len(p.EvaluatorScores) != len(src) {
+		return false
+	}
+	for i, v := range p.EvaluatorScores {
+		_src := src[i]
+		if !v.DeepEqual(_src) {
+			return false
+		}
 	}
 	return true
 }

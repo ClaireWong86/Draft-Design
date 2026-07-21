@@ -33,6 +33,9 @@ func (p *OptimizeFieldMapping) IsValid() error {
 func (p *OptimizePromptSnapshot) IsValid() error {
 	return nil
 }
+func (p *OptimizeEvaluatorScore) IsValid() error {
+	return nil
+}
 func (p *OptimizeCaseDetail) IsValid() error {
 	return nil
 }

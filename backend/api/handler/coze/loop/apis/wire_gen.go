@@ -152,7 +152,7 @@ func InitEvaluationHandler(ctx context.Context, idgen2 idgen.IIDGenerator, db2 d
 	}
 	iOptimizeTaskRepo := optimize.NewOptimizeTaskRepo(db2)
 	illmProvider := llm.NewLLMRPCProvider(llmClient)
-	optimizeService := application4.NewOptimizeApplication(idgen2, iOptimizeTaskRepo, illmProvider, iExperimentApplication)
+	optimizeService := application4.NewOptimizeApplication(idgen2, iOptimizeTaskRepo, illmProvider, iExperimentApplication, evaluatorService)
 	evaluationHandler := NewEvaluationHandler(iExperimentApplication, evaluatorService, evaluationSetService, evalTargetService, evalOpenAPIService, optimizeService)
 	return evaluationHandler, nil
 }

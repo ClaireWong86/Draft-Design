@@ -11,6 +11,7 @@ const (
 	OptimizeTaskStatusSucceeded = "succeeded"
 	OptimizeTaskStatusFailed    = "failed"
 	OptimizeTaskStatusCancelled = "cancelled"
+	OptimizeTaskMaxAttempts     = 3
 )
 
 // OptimizeTaskRecord is the durable representation of an intelligent prompt
@@ -34,6 +35,9 @@ type OptimizeTaskRecord struct {
 	ResultJSON         string
 	ErrorMsg           string
 	CancelRequested    bool
+	LeaseToken         string
+	LeaseExpiresAt     *time.Time
+	AttemptCount       int32
 	CreatedBy          string
 	CreatedAt          time.Time
 	UpdatedAt          time.Time

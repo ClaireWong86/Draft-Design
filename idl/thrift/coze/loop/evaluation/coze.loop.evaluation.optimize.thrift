@@ -32,6 +32,10 @@ struct OptimizeFieldMapping {
     1: required list<OptimizeVariableFieldMapping> variable_fields
     2: optional string actual_output_field
     3: optional string reference_output_field
+    4: optional i64 evaluator_version_id (api.js_conv="true", go.tag='json:"evaluator_version_id"')
+    5: optional double score_min
+    6: optional double score_max
+    7: optional bool only_failed
 }
 
 struct OptimizePromptSnapshot {
@@ -41,6 +45,13 @@ struct OptimizePromptSnapshot {
     4: optional list<prompt.VariableDef> variable_defs
 }
 
+struct OptimizeEvaluatorScore {
+    1: required i64 evaluator_version_id (api.js_conv="true", go.tag='json:"evaluator_version_id"')
+    2: optional string evaluator_name
+    3: optional double before_score
+    4: optional double after_score
+}
+
 struct OptimizeCaseDetail {
     1: required string case_id
     2: optional double before_score
@@ -48,6 +59,7 @@ struct OptimizeCaseDetail {
     4: optional string before_actual
     5: optional string after_actual
     6: optional string reference
+    7: optional list<OptimizeEvaluatorScore> evaluator_scores
 }
 
 struct OptimizeDiagnosis {
