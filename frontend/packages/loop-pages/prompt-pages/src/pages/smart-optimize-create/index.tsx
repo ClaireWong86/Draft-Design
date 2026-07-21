@@ -24,6 +24,7 @@ export default function SmartOptimizeCreatePage() {
     sourceType === 'experiment'
       ? searchParams.get('experiment_id') || ''
       : searchParams.get('eval_set_version_id') || '';
+  const evalSetID = searchParams.get('eval_set_id') || '';
   const promptVersion = searchParams.get('prompt_version') || undefined;
 
   const service = useRequest(
@@ -87,7 +88,13 @@ export default function SmartOptimizeCreatePage() {
       prompt={service.data.prompt}
       spaceID={spaceID}
       initialSource={
-        sourceID ? { id: sourceID, name: service.data.sourceName } : undefined
+        sourceID
+          ? {
+              id: sourceID,
+              parentId: sourceType === 'eval_set' ? evalSetID : undefined,
+              name: service.data.sourceName,
+            }
+          : undefined
       }
       onClose={returnToTaskList}
       onSubmitted={returnToTaskList}

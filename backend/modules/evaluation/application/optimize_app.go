@@ -4,11 +4,13 @@
 package application
 
 import (
+	"bytes"
 	"context"
 	"crypto/rand"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -18,8 +20,10 @@ import (
 	"github.com/coze-dev/coze-loop/backend/kitex_gen/base"
 	evaluationapi "github.com/coze-dev/coze-loop/backend/kitex_gen/coze/loop/evaluation"
 	evaluatorcommon "github.com/coze-dev/coze-loop/backend/kitex_gen/coze/loop/evaluation/domain/common"
+	evalsetdto "github.com/coze-dev/coze-loop/backend/kitex_gen/coze/loop/evaluation/domain/eval_set"
 	evaluatordto "github.com/coze-dev/coze-loop/backend/kitex_gen/coze/loop/evaluation/domain/evaluator"
 	domainexpt "github.com/coze-dev/coze-loop/backend/kitex_gen/coze/loop/evaluation/domain/expt"
+	evalsetservice "github.com/coze-dev/coze-loop/backend/kitex_gen/coze/loop/evaluation/eval_set"
 	evaluatorservice "github.com/coze-dev/coze-loop/backend/kitex_gen/coze/loop/evaluation/evaluator"
 	expt "github.com/coze-dev/coze-loop/backend/kitex_gen/coze/loop/evaluation/expt"
 	"github.com/coze-dev/coze-loop/backend/kitex_gen/coze/loop/evaluation/optimize"
@@ -42,16 +46,18 @@ type OptimizeApplication struct {
 	llm         rpc.ILLMProvider
 	experiments IExperimentApplication
 	evaluators  evaluationapi.EvaluatorService
+	evalSets    evaluationapi.EvaluationSetService
 	queue       chan int64
 }
 
-func NewOptimizeApplication(idGenerator idgen.IIDGenerator, taskRepo repo.IOptimizeTaskRepo, llm rpc.ILLMProvider, experiments IExperimentApplication, evaluators evaluationapi.EvaluatorService) optimize.OptimizeService {
+func NewOptimizeApplication(idGenerator idgen.IIDGenerator, taskRepo repo.IOptimizeTaskRepo, llm rpc.ILLMProvider, experiments IExperimentApplication, evaluators evaluationapi.EvaluatorService, evalSets evaluationapi.EvaluationSetService) optimize.OptimizeService {
 	app := &OptimizeApplication{
 		idgen:       idGenerator,
 		repo:        taskRepo,
 		llm:         llm,
 		experiments: experiments,
 		evaluators:  evaluators,
+		evalSets:    evalSets,
 		queue:       make(chan int64, optimizeWorkerQueueSize),
 	}
 	go app.runWorker()
@@ -79,6 +85,10 @@ func (a *OptimizeApplication) CreateOptimizeTask(ctx context.Context, req *optim
 	if err != nil {
 		return nil, err
 	}
+	sourceJSON, err := json.Marshal(req.Source)
+	if err != nil {
+		return nil, err
+	}
 	name := strings.TrimSpace(req.GetName())
 	if name == "" {
 		name = fmt.Sprintf("智能优化-%s", time.Now().Format("20060102-150405"))
@@ -91,7 +101,7 @@ func (a *OptimizeApplication) CreateOptimizeTask(ctx context.Context, req *optim
 	record := &entity.OptimizeTaskRecord{
 		ID: id, WorkspaceID: req.WorkspaceID, PromptID: req.PromptID,
 		PromptVersion: req.GetPromptVersion(), Name: name,
-		SourceType: string(req.Source.Type), SourceID: sourceID,
+		SourceType: string(req.Source.Type), SourceID: sourceID, SourceJSON: string(sourceJSON),
 		CaseItemIDsJSON: string(caseIDsJSON), MappingJSON: string(mappingJSON),
 		BaselinePromptJSON: string(baselineJSON), OptimizerModelID: req.OptimizerModelID,
 		ModeScore: req.ModeScore, Status: entity.OptimizeTaskStatusQueued,
@@ -185,6 +195,12 @@ func validateCreateOptimizeTask(req *optimize.CreateOptimizeTaskRequest) error {
 	if len(req.CaseItemIds) == 0 {
 		return errors.New("at least one case is required")
 	}
+	if req.Source.GetType() == optimize.OptimizeSourceTypeExperiment && req.Source.GetExperimentID() <= 0 {
+		return errors.New("source.experiment_id is required")
+	}
+	if req.Source.GetType() == optimize.OptimizeSourceTypeEvalSet && (req.Source.GetEvalSetID() <= 0 || req.Source.GetEvalSetVersionID() <= 0) {
+		return errors.New("source.eval_set_id and source.eval_set_version_id are required")
+	}
 	return nil
 }
 
@@ -238,6 +254,11 @@ func (a *OptimizeApplication) processTask(ctx context.Context, taskID int64) {
 		_ = a.repo.Fail(ctx, taskID, leaseToken, err.Error())
 		return
 	}
+	// The worker runs outside the request goroutine, so its background context
+	// does not contain the authenticated session injected by HTTP middleware.
+	// Restore the task creator before calling evaluation-set / experiment APIs;
+	// those APIs correctly enforce workspace permission from the session context.
+	ctx = optimizeWorkerContext(ctx, record.CreatedBy)
 	if cancelled, _ := a.repo.IsCancelRequested(ctx, taskID); cancelled {
 		_ = a.repo.MarkCancelled(ctx, taskID)
 		return
@@ -257,6 +278,13 @@ func (a *OptimizeApplication) processTask(ctx context.Context, taskID int64) {
 	_ = a.repo.Complete(ctx, taskID, leaseToken, resultJSON)
 }
 
+func optimizeWorkerContext(ctx context.Context, createdBy string) context.Context {
+	if createdBy == "" {
+		return ctx
+	}
+	return session.WithCtxUser(ctx, &session.User{ID: createdBy})
+}
+
 func newOptimizeLeaseToken() string {
 	var value [16]byte
 	if _, err := rand.Read(value[:]); err != nil {
@@ -273,6 +301,8 @@ type optimizePolicy struct {
 	maxModelCalls   int
 }
 
+const goodcaseJudgeBatchSize = 12
+
 func policyForMode(modeScore float64) optimizePolicy {
 	policy := optimizePolicy{rounds: 2, candidates: 2, validationRatio: 0.25, minGain: 0.001, maxModelCalls: 48}
 	if modeScore >= 0.67 {
@@ -285,7 +315,22 @@ func policyForMode(modeScore float64) optimizePolicy {
 
 func (a *OptimizeApplication) runOptimizationLoop(ctx context.Context, task *entity.OptimizeTaskRecord, leaseToken string) (*optimizerOutput, []candidateCaseResult, error) {
 	policy := policyForMode(task.ModeScore)
+	if task.SourceType == string(optimize.OptimizeSourceTypeEvalSet) {
+		var caseIDs []string
+		_ = json.Unmarshal([]byte(task.CaseItemIDsJSON), &caseIDs)
+		// The baseline runs once per case. Each candidate then needs one
+		// generation call, one inference call per case, and one judge call per
+		// bounded batch comparing baseline and candidate together.
+		required := len(caseIDs) + policy.rounds*policy.candidates*(len(caseIDs)+goodcaseJudgeBatchCount(len(caseIDs))+1)
+		if required > policy.maxModelCalls {
+			policy.maxModelCalls = required
+		}
+	}
 	ctx = context.WithValue(ctx, optimizeBudgetContextKey{}, &optimizeCallBudget{max: policy.maxModelCalls})
+	baselineOutputs, err := a.executeGoodcaseBaseline(ctx, task)
+	if err != nil {
+		return nil, nil, err
+	}
 	optimizationIDs, validationIDs := splitCaseIDs(task.CaseItemIDsJSON, policy.validationRatio)
 	current := *task
 	if len(optimizationIDs) > 0 {
@@ -308,13 +353,16 @@ func (a *OptimizeApplication) runOptimizationLoop(ctx context.Context, task *ent
 			if err != nil {
 				return nil, nil, err
 			}
-			cases, err := a.executeCandidateCases(ctx, task, out)
+			cases, err := a.executeCandidateCases(ctx, task, out, baselineOutputs)
 			if err != nil {
 				return nil, nil, err
 			}
 			score, scored := validationScore(cases, validationIDs)
+			if task.SourceType == string(optimize.OptimizeSourceTypeEvalSet) {
+				score, scored = validationGain(cases, validationIDs)
+			}
 			if !scored {
-				score = -float64(candidate)
+				return nil, nil, errors.New("candidate evaluation produced no comparable scores")
 			}
 			if bestOut == nil || score > bestScore {
 				bestOut, bestCases, bestScore = out, cases, score
@@ -338,6 +386,9 @@ func (a *OptimizeApplication) runOptimizationLoop(ctx context.Context, task *ent
 	}
 	if bestOut == nil {
 		return nil, nil, errors.New("optimizer produced no candidate")
+	}
+	if task.SourceType == string(optimize.OptimizeSourceTypeEvalSet) && bestScore <= policy.minGain {
+		return nil, nil, fmt.Errorf("no candidate improved the Goodcase baseline: best gain %.4f, required > %.4f", bestScore, policy.minGain)
 	}
 	return bestOut, bestCases, nil
 }
@@ -375,6 +426,23 @@ func validationScore(cases []candidateCaseResult, validation map[string]struct{}
 	return averageSlice(values)
 }
 
+func validationGain(cases []candidateCaseResult, validation map[string]struct{}) (float64, bool) {
+	var values []float64
+	for _, item := range cases {
+		if len(validation) > 0 {
+			if _, ok := validation[item.caseID]; !ok {
+				continue
+			}
+		}
+		before, hasBefore := averageScores(item.beforeScores)
+		after, hasAfter := averageScores(item.afterScores)
+		if hasBefore && hasAfter {
+			values = append(values, after-before)
+		}
+	}
+	return averageSlice(values)
+}
+
 // executeCandidateCases performs one temporary execution per selected case.
 // It deliberately does not create a Prompt version. Each case is sent with a
 // structured variables/evidence payload; outputs are not treated as scores.
@@ -387,7 +455,7 @@ type candidateCaseResult struct {
 	evaluatorNames map[int64]string
 }
 
-func (a *OptimizeApplication) executeCandidateCases(ctx context.Context, task *entity.OptimizeTaskRecord, out *optimizerOutput) ([]candidateCaseResult, error) {
+func (a *OptimizeApplication) executeCandidateCases(ctx context.Context, task *entity.OptimizeTaskRecord, out *optimizerOutput, baselineOutputs map[string]string) ([]candidateCaseResult, error) {
 	var snapshot optimize.OptimizePromptSnapshot
 	if err := json.Unmarshal([]byte(task.BaselinePromptJSON), &snapshot); err != nil {
 		return nil, fmt.Errorf("decode candidate snapshot: %w", err)
@@ -399,6 +467,7 @@ func (a *OptimizeApplication) executeCandidateCases(ctx context.Context, task *e
 	}
 	itemEvidence := []json.RawMessage{nil}
 	var experimentItems []*domainexpt.ItemResult_
+	var evaluationSetItems []*evalsetdto.EvaluationSetItem
 	if response, ok := evidence.(*expt.BatchGetExperimentResultResponse); ok && response != nil {
 		if len(response.ItemResults) == 0 {
 			return nil, errors.New("no experiment cases matched the selected IDs and score filters")
@@ -412,6 +481,19 @@ func (a *OptimizeApplication) executeCandidateCases(ctx context.Context, task *e
 			}
 			itemEvidence = append(itemEvidence, encoded)
 		}
+	} else if response, ok := evidence.(*evalsetservice.BatchGetEvaluationSetItemsResponse); ok && response != nil {
+		if len(response.Items) == 0 {
+			return nil, errors.New("no evaluation set items matched the selected IDs")
+		}
+		evaluationSetItems = response.Items
+		itemEvidence = make([]json.RawMessage, 0, len(response.Items))
+		for _, item := range response.Items {
+			encoded, marshalErr := json.Marshal(normalizeEvaluationSetItem(item))
+			if marshalErr != nil {
+				return nil, fmt.Errorf("marshal evaluation set item: %w", marshalErr)
+			}
+			itemEvidence = append(itemEvidence, encoded)
+		}
 	}
 	results := make([]candidateCaseResult, 0, len(itemEvidence))
 	for index, evidenceJSON := range itemEvidence {
@@ -419,16 +501,16 @@ func (a *OptimizeApplication) executeCandidateCases(ctx context.Context, task *e
 			return nil, errors.New("candidate execution cancelled")
 		}
 		mapped, caseID := mapCaseEvidence(task, evidenceJSON, index)
-		rendered, renderErr := renderCandidateMessages(snapshot.Messages, mapped)
-		if renderErr != nil {
-			return nil, fmt.Errorf("render candidate case %s: %w", caseID, renderErr)
+		if task.SourceType == string(optimize.OptimizeSourceTypeEvalSet) {
+			baseline, ok := baselineOutputs[caseID]
+			if !ok || strings.TrimSpace(baseline) == "" {
+				return nil, fmt.Errorf("Goodcase baseline output is missing for case %s", caseID)
+			}
+			mapped["actual_output"] = baseline
 		}
-		caseMessages, convertErr := convertCandidateMessages(rendered)
+		caseMessages, convertErr := buildOptimizeCaseMessages(&snapshot, mapped, caseID)
 		if convertErr != nil {
-			return nil, fmt.Errorf("convert candidate case %s: %w", caseID, convertErr)
-		}
-		if len(caseMessages) == 0 {
-			return nil, errors.New("candidate prompt has no messages")
+			return nil, convertErr
 		}
 		output, err := a.callCandidate(ctx, task, caseMessages)
 		if err != nil {
@@ -443,7 +525,221 @@ func (a *OptimizeApplication) executeCandidateCases(ctx context.Context, task *e
 		}
 		results = append(results, result)
 	}
+	if len(evaluationSetItems) > 0 {
+		if err := a.judgeGoodcaseBatches(ctx, task, results); err != nil {
+			return nil, err
+		}
+	}
 	return results, nil
+}
+
+func (a *OptimizeApplication) executeGoodcaseBaseline(ctx context.Context, task *entity.OptimizeTaskRecord) (map[string]string, error) {
+	if task.SourceType != string(optimize.OptimizeSourceTypeEvalSet) {
+		return nil, nil
+	}
+	var snapshot optimize.OptimizePromptSnapshot
+	if err := json.Unmarshal([]byte(task.BaselinePromptJSON), &snapshot); err != nil {
+		return nil, fmt.Errorf("decode Goodcase baseline snapshot: %w", err)
+	}
+	evidence, err := a.loadEvidence(ctx, task)
+	if err != nil {
+		return nil, err
+	}
+	response, ok := evidence.(*evalsetservice.BatchGetEvaluationSetItemsResponse)
+	if !ok || response == nil || len(response.Items) == 0 {
+		return nil, errors.New("no evaluation set items available for Goodcase baseline")
+	}
+	outputs := make(map[string]string, len(response.Items))
+	for index, item := range response.Items {
+		if cancelled, _ := a.repo.IsCancelRequested(ctx, task.ID); cancelled {
+			return nil, errors.New("Goodcase baseline execution cancelled")
+		}
+		encoded, err := json.Marshal(normalizeEvaluationSetItem(item))
+		if err != nil {
+			return nil, fmt.Errorf("marshal Goodcase baseline item: %w", err)
+		}
+		mapped, caseID := mapCaseEvidence(task, encoded, index)
+		messages, err := buildOptimizeCaseMessages(&snapshot, mapped, caseID)
+		if err != nil {
+			return nil, err
+		}
+		output, err := a.callBaseline(ctx, task, messages)
+		if err != nil {
+			return nil, fmt.Errorf("execute Goodcase baseline case %s: %w", caseID, err)
+		}
+		outputs[caseID] = output
+	}
+	return outputs, nil
+}
+
+func buildOptimizeCaseMessages(snapshot *optimize.OptimizePromptSnapshot, mapped map[string]any, caseID string) ([]*entity.Message, error) {
+	rendered, err := renderCandidateMessages(snapshot.Messages, mapped)
+	if err != nil {
+		return nil, fmt.Errorf("render candidate case %s: %w", caseID, err)
+	}
+	messages, err := convertCandidateMessages(rendered)
+	if err != nil {
+		return nil, fmt.Errorf("convert candidate case %s: %w", caseID, err)
+	}
+	if len(messages) == 0 {
+		return nil, errors.New("candidate prompt has no messages")
+	}
+	messages, err = appendMappedMultimodalEvidence(messages, mapped)
+	if err != nil {
+		return nil, fmt.Errorf("append candidate evidence for case %s: %w", caseID, err)
+	}
+	return messages, nil
+}
+
+const goodcaseJudgeEvaluatorID int64 = 0
+
+func goodcaseJudgeBatchCount(caseCount int) int {
+	if caseCount <= 0 {
+		return 0
+	}
+	return (caseCount + goodcaseJudgeBatchSize - 1) / goodcaseJudgeBatchSize
+}
+
+type goodcaseJudgeInput struct {
+	CaseID          string         `json:"case_id"`
+	Input           map[string]any `json:"input"`
+	ReferenceOutput string         `json:"reference_output"`
+	BaselineActual  *string        `json:"baseline_actual,omitempty"`
+	CandidateActual string         `json:"candidate_actual"`
+}
+
+type goodcaseJudgeScore struct {
+	CaseID      string   `json:"case_id"`
+	BeforeScore *float64 `json:"before_score,omitempty"`
+	AfterScore  *float64 `json:"after_score"`
+	Reason      string   `json:"reason,omitempty"`
+}
+
+type goodcaseJudgeOutput struct {
+	Scores []goodcaseJudgeScore `json:"scores"`
+}
+
+func (a *OptimizeApplication) judgeGoodcaseBatches(ctx context.Context, task *entity.OptimizeTaskRecord, results []candidateCaseResult) error {
+	for start := 0; start < len(results); start += goodcaseJudgeBatchSize {
+		end := start + goodcaseJudgeBatchSize
+		if end > len(results) {
+			end = len(results)
+		}
+		inputs := make([]goodcaseJudgeInput, 0, end-start)
+		for index := start; index < end; index++ {
+			item := &results[index]
+			reference, ok := item.input["reference_output"]
+			if !ok || strings.TrimSpace(fmt.Sprint(reference)) == "" {
+				return fmt.Errorf("goodcase %s reference_output mapping did not resolve to a value", item.caseID)
+			}
+			var baseline *string
+			if actual, exists := item.input["actual_output"]; exists && strings.TrimSpace(fmt.Sprint(actual)) != "" {
+				value := fmt.Sprint(actual)
+				baseline = &value
+			}
+			inputs = append(inputs, goodcaseJudgeInput{
+				CaseID: item.caseID, Input: goodcaseJudgeVariables(item.input), ReferenceOutput: fmt.Sprint(reference),
+				BaselineActual: baseline, CandidateActual: item.output,
+			})
+		}
+		judged, err := a.callGoodcaseJudgeBatch(ctx, task, inputs)
+		if err != nil {
+			return fmt.Errorf("judge goodcase batch %d: %w", start/goodcaseJudgeBatchSize+1, err)
+		}
+		if err := applyGoodcaseJudgeOutput(results[start:end], judged); err != nil {
+			return fmt.Errorf("apply goodcase batch %d: %w", start/goodcaseJudgeBatchSize+1, err)
+		}
+	}
+	return nil
+}
+
+func goodcaseJudgeVariables(input map[string]any) map[string]any {
+	variables := make(map[string]any, len(input))
+	for key, value := range input {
+		if key == "actual_output" || key == "reference_output" {
+			continue
+		}
+		variables[key] = value
+	}
+	return variables
+}
+
+func (a *OptimizeApplication) callGoodcaseJudgeBatch(ctx context.Context, task *entity.OptimizeTaskRecord, inputs []goodcaseJudgeInput) (*goodcaseJudgeOutput, error) {
+	payload, err := json.Marshal(map[string]any{"cases": inputs})
+	if err != nil {
+		return nil, err
+	}
+	systemText := "你是严格的批量评测裁判。逐条比较模型回答与优质参考答案在事实、约束和输出格式上的一致性，不得遗漏、合并或改写 case_id。只返回 JSON：{\"scores\":[{\"case_id\":\"原值\",\"before_score\":0到1之间的数字或省略,\"after_score\":0到1之间的数字,\"reason\":\"简短原因\"}]}。仅当输入含 baseline_actual 时返回 before_score。"
+	userText := string(payload)
+	modelID, temperature := task.OptimizerModelID, 0.0
+	maxTokens := int32(512 + len(inputs)*160)
+	if maxTokens > 4096 {
+		maxTokens = 4096
+	}
+	reply, err := a.callLLMWithRetry(ctx, &entity.LLMCallParam{
+		SpaceID: task.WorkspaceID, EvaluatorID: fmt.Sprintf("optimize_goodcase:%d", task.ID), Scenario: entity.ScenarioEvaluator,
+		Messages:    []*entity.Message{{Role: entity.RoleSystem, Content: &entity.Content{Text: &systemText}}, {Role: entity.RoleUser, Content: &entity.Content{Text: &userText}}},
+		ModelConfig: &entity.ModelConfig{ModelID: &modelID, MaxTokens: &maxTokens, Temperature: &temperature},
+	})
+	if err != nil {
+		return nil, err
+	}
+	if reply == nil || reply.Content == nil {
+		return nil, errors.New("goodcase judge returned empty output")
+	}
+	var judged goodcaseJudgeOutput
+	if err := json.Unmarshal([]byte(stripJSONFence(*reply.Content)), &judged); err != nil {
+		return nil, fmt.Errorf("parse goodcase judge output: %w", err)
+	}
+	return &judged, nil
+}
+
+func applyGoodcaseJudgeOutput(results []candidateCaseResult, judged *goodcaseJudgeOutput) error {
+	if judged == nil {
+		return errors.New("goodcase judge output is nil")
+	}
+	byID := make(map[string]*candidateCaseResult, len(results))
+	for index := range results {
+		byID[results[index].caseID] = &results[index]
+	}
+	seen := make(map[string]struct{}, len(judged.Scores))
+	for _, score := range judged.Scores {
+		item, ok := byID[score.CaseID]
+		if !ok {
+			return fmt.Errorf("unknown case_id %q", score.CaseID)
+		}
+		if _, duplicated := seen[score.CaseID]; duplicated {
+			return fmt.Errorf("duplicate case_id %q", score.CaseID)
+		}
+		if score.AfterScore == nil {
+			return fmt.Errorf("case %s missing after_score", score.CaseID)
+		}
+		if *score.AfterScore < 0 || *score.AfterScore > 1 {
+			return fmt.Errorf("case %s after_score out of range: %v", score.CaseID, *score.AfterScore)
+		}
+		item.beforeScores = map[int64]float64{}
+		item.afterScores = map[int64]float64{goodcaseJudgeEvaluatorID: *score.AfterScore}
+		item.evaluatorNames = map[int64]string{goodcaseJudgeEvaluatorID: "Goodcase Judge"}
+		baseline, hasBaseline := item.input["actual_output"]
+		hasBaseline = hasBaseline && strings.TrimSpace(fmt.Sprint(baseline)) != ""
+		if hasBaseline && score.BeforeScore == nil {
+			return fmt.Errorf("case %s missing before_score", score.CaseID)
+		}
+		if !hasBaseline && score.BeforeScore != nil {
+			return fmt.Errorf("case %s returned before_score without baseline_actual", score.CaseID)
+		}
+		if score.BeforeScore != nil {
+			if *score.BeforeScore < 0 || *score.BeforeScore > 1 {
+				return fmt.Errorf("case %s before_score out of range: %v", score.CaseID, *score.BeforeScore)
+			}
+			item.beforeScores[goodcaseJudgeEvaluatorID] = *score.BeforeScore
+		}
+		seen[score.CaseID] = struct{}{}
+	}
+	if len(seen) != len(results) {
+		return fmt.Errorf("judge returned %d of %d cases", len(seen), len(results))
+	}
+	return nil
 }
 
 func (a *OptimizeApplication) rerunOriginalEvaluators(ctx context.Context, task *entity.OptimizeTaskRecord, item *domainexpt.ItemResult_, actual string) (map[int64]float64, map[int64]float64, map[int64]string, error) {
@@ -515,19 +811,27 @@ func replaceEvaluatorActual(input *evaluatordto.EvaluatorInputData, actual strin
 }
 
 func (a *OptimizeApplication) callCandidate(ctx context.Context, task *entity.OptimizeTaskRecord, messages []*entity.Message) (string, error) {
+	return a.callOptimizePrompt(ctx, task, messages, "optimize_candidate")
+}
+
+func (a *OptimizeApplication) callBaseline(ctx context.Context, task *entity.OptimizeTaskRecord, messages []*entity.Message) (string, error) {
+	return a.callOptimizePrompt(ctx, task, messages, "optimize_baseline")
+}
+
+func (a *OptimizeApplication) callOptimizePrompt(ctx context.Context, task *entity.OptimizeTaskRecord, messages []*entity.Message, scenario string) (string, error) {
 	modelID := task.OptimizerModelID
 	maxTokens := int32(4096)
 	temperature := 0.2
 	reply, err := a.callLLMWithRetry(ctx, &entity.LLMCallParam{
-		SpaceID: task.WorkspaceID, EvaluatorID: fmt.Sprintf("optimize_candidate:%d", task.ID),
+		SpaceID: task.WorkspaceID, EvaluatorID: fmt.Sprintf("%s:%d", scenario, task.ID),
 		Scenario: entity.ScenarioEvaluator, Messages: messages,
 		ModelConfig: &entity.ModelConfig{ModelID: &modelID, MaxTokens: &maxTokens, Temperature: &temperature},
 	})
 	if err != nil {
-		return "", fmt.Errorf("execute candidate: %w", err)
+		return "", fmt.Errorf("execute %s: %w", scenario, err)
 	}
 	if reply == nil || reply.Content == nil || strings.TrimSpace(*reply.Content) == "" {
-		return "", errors.New("candidate execution returned empty output")
+		return "", fmt.Errorf("%s execution returned empty output", scenario)
 	}
 	return *reply.Content, nil
 }
@@ -578,7 +882,59 @@ func (a *OptimizeApplication) generateCandidate(ctx context.Context, task *entit
 	if strings.TrimSpace(out.OptimizedPrompt) == "" {
 		return nil, errors.New("optimizer output missing optimized_prompt")
 	}
+	normalizedPrompt, unknownVariables, err := normalizeOptimizerVariables(task.BaselinePromptJSON, out.OptimizedPrompt)
+	if err != nil {
+		return nil, err
+	}
+	out.OptimizedPrompt = normalizedPrompt
+	if len(unknownVariables) > 0 {
+		out.FailureModes = append(out.FailureModes, fmt.Sprintf("优化模型生成了未定义变量，已按普通文本处理：%s", strings.Join(unknownVariables, ", ")))
+	}
 	return &out, nil
+}
+
+func normalizeOptimizerVariables(snapshotJSON, optimizedPrompt string) (string, []string, error) {
+	var snapshot optimize.OptimizePromptSnapshot
+	if err := json.Unmarshal([]byte(snapshotJSON), &snapshot); err != nil {
+		return "", nil, fmt.Errorf("decode prompt snapshot for variable validation: %w", err)
+	}
+	allowed := make(map[string]struct{}, len(snapshot.VariableDefs))
+	for _, definition := range snapshot.VariableDefs {
+		if definition != nil && definition.GetKey() != "" {
+			allowed[definition.GetKey()] = struct{}{}
+		}
+	}
+	for _, message := range snapshot.Messages {
+		if message == nil {
+			continue
+		}
+		for _, match := range optimizeVariablePattern.FindAllStringSubmatch(message.GetContent(), -1) {
+			allowed[match[1]] = struct{}{}
+		}
+		for _, part := range message.GetParts() {
+			if part == nil {
+				continue
+			}
+			for _, match := range optimizeVariablePattern.FindAllStringSubmatch(part.GetText(), -1) {
+				allowed[match[1]] = struct{}{}
+			}
+		}
+	}
+	unknownSet := make(map[string]struct{})
+	normalized := optimizeVariablePattern.ReplaceAllStringFunc(optimizedPrompt, func(match string) string {
+		parts := optimizeVariablePattern.FindStringSubmatch(match)
+		if _, ok := allowed[parts[1]]; ok {
+			return match
+		}
+		unknownSet[parts[1]] = struct{}{}
+		return parts[1]
+	})
+	unknown := make([]string, 0, len(unknownSet))
+	for variable := range unknownSet {
+		unknown = append(unknown, variable)
+	}
+	slices.Sort(unknown)
+	return normalized, unknown, nil
 }
 
 func (a *OptimizeApplication) callLLMWithRetry(ctx context.Context, param *entity.LLMCallParam) (*entity.ReplyItem, error) {
@@ -625,8 +981,37 @@ func consumeOptimizeCall(ctx context.Context) error {
 // changes while a task is running, and gives the meta-model actual/reference
 // outputs and evaluator scores instead of only case IDs.
 func (a *OptimizeApplication) loadEvidence(ctx context.Context, task *entity.OptimizeTaskRecord) (any, error) {
+	if task.SourceType == string(optimize.OptimizeSourceTypeEvalSet) {
+		if a.evalSets == nil {
+			return nil, errors.New("evaluation set service is unavailable")
+		}
+		var source optimize.OptimizeSource
+		if task.SourceJSON == "" || json.Unmarshal([]byte(task.SourceJSON), &source) != nil {
+			return nil, errors.New("evaluation set source snapshot is missing")
+		}
+		var rawIDs []string
+		if err := json.Unmarshal([]byte(task.CaseItemIDsJSON), &rawIDs); err != nil {
+			return nil, fmt.Errorf("decode evaluation set item IDs: %w", err)
+		}
+		itemIDs := make([]int64, 0, len(rawIDs))
+		for _, rawID := range rawIDs {
+			id, err := strconv.ParseInt(rawID, 10, 64)
+			if err != nil {
+				return nil, fmt.Errorf("invalid evaluation set item ID %q", rawID)
+			}
+			itemIDs = append(itemIDs, id)
+		}
+		versionID := source.GetEvalSetVersionID()
+		resp, err := a.evalSets.BatchGetEvaluationSetItems(ctx, &evalsetservice.BatchGetEvaluationSetItemsRequest{
+			WorkspaceID: task.WorkspaceID, EvaluationSetID: source.GetEvalSetID(), VersionID: &versionID, ItemIds: itemIDs,
+		})
+		if err != nil {
+			return nil, fmt.Errorf("load evaluation set evidence: %w", err)
+		}
+		return resp, nil
+	}
 	if task.SourceType != string(optimize.OptimizeSourceTypeExperiment) || a.experiments == nil {
-		return map[string]any{"source_type": task.SourceType, "case_item_ids": json.RawMessage(task.CaseItemIDsJSON)}, nil
+		return nil, fmt.Errorf("unsupported optimize source type %q", task.SourceType)
 	}
 	pageSize := int32(500)
 	pageNumber := int32(1)
@@ -669,6 +1054,87 @@ func (a *OptimizeApplication) loadEvidence(ctx context.Context, task *entity.Opt
 	}
 	resp.ItemResults = filtered
 	return resp, nil
+}
+
+func normalizeEvaluationSetItem(item *evalsetdto.EvaluationSetItem) map[string]any {
+	result := map[string]any{}
+	if item == nil {
+		return result
+	}
+	result["id"] = item.GetID()
+	result["item_id"] = item.GetItemID()
+	result["item_key"] = item.GetItemKey()
+	for turnIndex, turn := range item.GetTurns() {
+		if turn == nil {
+			continue
+		}
+		for _, field := range turn.GetFieldDataList() {
+			if field == nil {
+				continue
+			}
+			key := field.GetKey()
+			if key == "" {
+				key = field.GetName()
+			}
+			if key == "" {
+				continue
+			}
+			value := normalizeEvaluationContent(field.GetContent())
+			if turnIndex == 0 {
+				result[key] = value
+				if name := field.GetName(); name != "" {
+					result[name] = value
+				}
+			}
+			result[fmt.Sprintf("turns.%d.%s", turnIndex, key)] = value
+		}
+	}
+	return result
+}
+
+func normalizeEvaluationContent(content *evaluatorcommon.Content) any {
+	if content == nil {
+		return nil
+	}
+	if len(content.GetMultiPart()) > 0 {
+		parts := make([]any, 0, len(content.GetMultiPart()))
+		for _, part := range content.GetMultiPart() {
+			parts = append(parts, normalizeEvaluationContent(part))
+		}
+		return parts
+	}
+	// EvaluationSet image/video parts may also carry an empty, non-nil Text
+	// pointer. Prefer the declared content type and concrete media fields so
+	// those parts are not silently normalized to an empty string.
+	switch content.GetContentType() {
+	case evaluatorcommon.ContentTypeImage:
+		if content.Image != nil {
+			return map[string]any{"content_type": string(entity.ContentTypeImage), "image": content.Image}
+		}
+	case evaluatorcommon.ContentTypeVideo:
+		if content.Video != nil {
+			return map[string]any{"content_type": string(entity.ContentTypeVideo), "video": content.Video}
+		}
+	case evaluatorcommon.ContentTypeAudio:
+		if content.Audio != nil {
+			return content.Audio
+		}
+	case evaluatorcommon.ContentTypeText:
+		return content.GetText()
+	}
+	if content.Image != nil {
+		return map[string]any{"content_type": string(entity.ContentTypeImage), "image": content.Image}
+	}
+	if content.Video != nil {
+		return map[string]any{"content_type": string(entity.ContentTypeVideo), "video": content.Video}
+	}
+	if content.Audio != nil {
+		return content.Audio
+	}
+	if content.Text != nil {
+		return content.GetText()
+	}
+	return content
 }
 
 func matchesOptimizeScoreFilter(item *domainexpt.ItemResult_, mapping *optimize.OptimizeFieldMapping) bool {
@@ -800,7 +1266,9 @@ func averageSlice(values []float64) (float64, bool) {
 
 func mapCaseEvidence(task *entity.OptimizeTaskRecord, raw json.RawMessage, index int) (map[string]any, string) {
 	var source map[string]any
-	_ = json.Unmarshal(raw, &source)
+	decoder := json.NewDecoder(bytes.NewReader(raw))
+	decoder.UseNumber()
+	_ = decoder.Decode(&source)
 	var mapping optimize.OptimizeFieldMapping
 	_ = json.Unmarshal([]byte(task.MappingJSON), &mapping)
 	out := make(map[string]any)
@@ -855,11 +1323,18 @@ func stripJSONFence(value string) string {
 
 func (a *OptimizeApplication) recordToDTO(record *entity.OptimizeTaskRecord, source *optimize.OptimizeSource) (*optimize.OptimizeTask, error) {
 	if source == nil {
-		source = &optimize.OptimizeSource{Type: optimize.OptimizeSourceType(record.SourceType)}
-		if source.Type == optimize.OptimizeSourceTypeExperiment {
-			source.ExperimentID = &record.SourceID
+		if record.SourceJSON != "" {
+			source = &optimize.OptimizeSource{}
+			if err := json.Unmarshal([]byte(record.SourceJSON), source); err != nil {
+				return nil, err
+			}
 		} else {
-			source.EvalSetVersionID = &record.SourceID
+			source = &optimize.OptimizeSource{Type: optimize.OptimizeSourceType(record.SourceType)}
+			if source.Type == optimize.OptimizeSourceTypeExperiment {
+				source.ExperimentID = &record.SourceID
+			} else {
+				source.EvalSetVersionID = &record.SourceID
+			}
 		}
 	}
 	var caseIDs []string

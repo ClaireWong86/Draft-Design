@@ -6,6 +6,7 @@ package optimize
 import (
 	"context"
 	"time"
+	"unicode/utf8"
 
 	"gorm.io/gorm"
 
@@ -22,6 +23,7 @@ type optimizeTaskPO struct {
 	Name               string     `gorm:"column:name"`
 	SourceType         string     `gorm:"column:source_type"`
 	SourceID           int64      `gorm:"column:source_id"`
+	SourceJSON         *string    `gorm:"column:source"`
 	CaseItemIDsJSON    string     `gorm:"column:case_item_ids"`
 	MappingJSON        string     `gorm:"column:mapping"`
 	BaselinePromptJSON string     `gorm:"column:baseline_prompt"`
@@ -150,7 +152,20 @@ func (r *OptimizeTaskRepo) Complete(ctx context.Context, taskID int64, leaseToke
 
 func (r *OptimizeTaskRepo) Fail(ctx context.Context, taskID int64, leaseToken, errMsg string) error {
 	return r.db.NewSession(ctx).Model(&optimizeTaskPO{}).Where("id = ? AND status = ? AND lease_token = ?", taskID, entity.OptimizeTaskStatusRunning, leaseToken).
-		Updates(map[string]any{"status": entity.OptimizeTaskStatusFailed, "error_msg": errMsg, "lease_token": "", "lease_expires_at": nil}).Error
+		Updates(map[string]any{"status": entity.OptimizeTaskStatusFailed, "error_msg": truncateOptimizeErrorMessage(errMsg), "lease_token": "", "lease_expires_at": nil}).Error
+}
+
+const optimizeErrorMessageMaxRunes = 2048
+
+// error_msg is VARCHAR(2048). Some wrapped service errors include a complete
+// stack trace; truncating them here guarantees that recording the failure does
+// not itself fail and leave a task permanently in the running state.
+func truncateOptimizeErrorMessage(message string) string {
+	if utf8.RuneCountInString(message) <= optimizeErrorMessageMaxRunes {
+		return message
+	}
+	runes := []rune(message)
+	return string(runes[:optimizeErrorMessageMaxRunes])
 }
 
 func (r *OptimizeTaskRepo) RequestCancel(ctx context.Context, workspaceID, taskID int64) error {
@@ -200,10 +215,14 @@ func toPO(task *entity.OptimizeTaskRecord) *optimizeTaskPO {
 	if task.ResultJSON != "" {
 		result = &task.ResultJSON
 	}
+	var source *string
+	if task.SourceJSON != "" {
+		source = &task.SourceJSON
+	}
 	return &optimizeTaskPO{
 		ID: task.ID, WorkspaceID: task.WorkspaceID, PromptID: task.PromptID,
 		PromptVersion: task.PromptVersion, Name: task.Name, SourceType: task.SourceType,
-		SourceID: task.SourceID, CaseItemIDsJSON: task.CaseItemIDsJSON,
+		SourceID: task.SourceID, SourceJSON: source, CaseItemIDsJSON: task.CaseItemIDsJSON,
 		MappingJSON: task.MappingJSON, BaselinePromptJSON: task.BaselinePromptJSON,
 		OptimizerModelID: task.OptimizerModelID, ModeScore: task.ModeScore, Status: task.Status,
 		Progress: task.Progress, ResultJSON: result, ErrorMsg: task.ErrorMsg,
@@ -220,10 +239,14 @@ func toDO(po *optimizeTaskPO) *entity.OptimizeTaskRecord {
 	if po.ResultJSON != nil {
 		result = *po.ResultJSON
 	}
+	source := ""
+	if po.SourceJSON != nil {
+		source = *po.SourceJSON
+	}
 	return &entity.OptimizeTaskRecord{
 		ID: po.ID, WorkspaceID: po.WorkspaceID, PromptID: po.PromptID,
 		PromptVersion: po.PromptVersion, Name: po.Name, SourceType: po.SourceType,
-		SourceID: po.SourceID, CaseItemIDsJSON: po.CaseItemIDsJSON,
+		SourceID: po.SourceID, SourceJSON: source, CaseItemIDsJSON: po.CaseItemIDsJSON,
 		MappingJSON: po.MappingJSON, BaselinePromptJSON: po.BaselinePromptJSON,
 		OptimizerModelID: po.OptimizerModelID, ModeScore: po.ModeScore, Status: po.Status,
 		Progress: po.Progress, ResultJSON: result, ErrorMsg: po.ErrorMsg,

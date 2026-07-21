@@ -4,6 +4,7 @@
 package application
 
 import (
+	"encoding/json"
 	"fmt"
 
 	promptdto "github.com/coze-dev/coze-loop/backend/kitex_gen/coze/loop/prompt/domain/prompt"
@@ -29,6 +30,81 @@ func convertCandidateMessages(messages []*promptdto.Message) ([]*entity.Message,
 		})
 	}
 	return result, nil
+}
+
+// appendMappedMultimodalEvidence turns versioned EvaluationSet Content back
+// into runtime message parts. This prevents image/video variables from being
+// serialized as JSON text when the baseline Prompt uses a text placeholder.
+func appendMappedMultimodalEvidence(messages []*entity.Message, variables map[string]any) ([]*entity.Message, error) {
+	parts := make([]*entity.Content, 0)
+	for key, value := range variables {
+		if key == "actual_output" || key == "reference_output" || !containsMappedMedia(value) {
+			continue
+		}
+		converted, err := mappedValueToRuntimeParts(value)
+		if err != nil {
+			return nil, fmt.Errorf("multimodal variable %s: %w", key, err)
+		}
+		parts = append(parts, converted...)
+	}
+	if len(parts) == 0 {
+		return messages, nil
+	}
+	prefix := "请基于以下多模态输入完成任务。"
+	parts = append([]*entity.Content{{ContentType: contentType(entity.ContentTypeText), Text: &prefix}}, parts...)
+	return append(messages, &entity.Message{
+		Role:    entity.RoleUser,
+		Content: &entity.Content{ContentType: contentType(entity.ContentTypeMultipart), MultiPart: parts},
+	}), nil
+}
+
+func mappedValueToRuntimeParts(value any) ([]*entity.Content, error) {
+	switch typed := value.(type) {
+	case []any:
+		parts := make([]*entity.Content, 0, len(typed))
+		for _, valuePart := range typed {
+			converted, err := mappedValueToRuntimeParts(valuePart)
+			if err != nil {
+				return nil, err
+			}
+			parts = append(parts, converted...)
+		}
+		return parts, nil
+	case string:
+		return []*entity.Content{{ContentType: contentType(entity.ContentTypeText), Text: &typed}}, nil
+	case map[string]any:
+		kind, _ := typed["content_type"].(string)
+		raw, err := json.Marshal(typed)
+		if err != nil {
+			return nil, err
+		}
+		switch entity.ContentType(kind) {
+		case entity.ContentTypeImage:
+			var wrapped struct {
+				Image *entity.Image `json:"image"`
+			}
+			if err := json.Unmarshal(raw, &wrapped); err != nil || wrapped.Image == nil {
+				return nil, errorsOr(err, "image content is missing")
+			}
+			return []*entity.Content{{ContentType: contentType(entity.ContentTypeImage), Image: wrapped.Image}}, nil
+		case entity.ContentTypeVideo:
+			var wrapped struct {
+				Video *entity.Video `json:"video"`
+			}
+			if err := json.Unmarshal(raw, &wrapped); err != nil || wrapped.Video == nil {
+				return nil, errorsOr(err, "video content is missing")
+			}
+			return []*entity.Content{{ContentType: contentType(entity.ContentTypeVideo), Video: wrapped.Video}}, nil
+		}
+	}
+	return nil, nil
+}
+
+func errorsOr(err error, message string) error {
+	if err != nil {
+		return err
+	}
+	return fmt.Errorf("%s", message)
 }
 
 func convertCandidateRole(role promptdto.Role) entity.Role {

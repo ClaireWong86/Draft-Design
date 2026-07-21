@@ -9,7 +9,11 @@ import { useMemo, useState } from 'react';
 
 import { ModelSelectWithObject } from '@cozeloop/prompt-components-v2';
 import { I18n } from '@cozeloop/i18n-adapter';
-import { ExperimentsSelect } from '@cozeloop/evaluate-components';
+import {
+  EvaluateSetSelect,
+  EvaluateSetVersionSelect,
+  ExperimentsSelect,
+} from '@cozeloop/evaluate-components';
 import { useModelList } from '@cozeloop/biz-hooks-adapter';
 import { type Prompt } from '@cozeloop/api-schema/prompt';
 import { type Model } from '@cozeloop/api-schema/llm-manage';
@@ -29,6 +33,7 @@ import {
 
 import { type OptimizeSourceType } from './types';
 import { ExperimentCaseSelector } from './experiment-case-selector';
+import { EvaluationSetCaseSelector } from './evaluation-set-case-selector';
 import { optimizeTaskClient } from './client';
 
 const MIN_CASES = 10;
@@ -58,15 +63,19 @@ export function SmartOptimizeWizard({
   sourceType: OptimizeSourceType;
   prompt?: Prompt;
   spaceID?: string;
-  initialSource?: { id: string; name?: string };
+  initialSource?: { id: string; parentId?: string; name?: string };
   embedded?: boolean;
   onClose: () => void;
   onSubmitted?: (taskId: string) => void;
 }) {
-  const firstStep = initialSource ? 1 : 0;
+  const firstStep = initialSource && (sourceType === 'experiment' || initialSource.parentId) ? 1 : 0;
   const [step, setStep] = useState(firstStep);
   const [sourceId, setSourceId] = useState('');
   const [sourceName, setSourceName] = useState('');
+  const [evalSetId, setEvalSetId] = useState(initialSource?.parentId || '');
+  const [evalSetVersionId, setEvalSetVersionId] = useState(
+    sourceType === 'eval_set' ? initialSource?.id || '' : '',
+  );
   const [selectedCaseIDs, setSelectedCaseIDs] = useState<string[]>([]);
   const [sourceFields, setSourceFields] = useState<ColumnEvalSetField[]>([]);
   const [variableMappings, setVariableMappings] = useState<
@@ -113,6 +122,8 @@ export function SmartOptimizeWizard({
     setStep(firstStep);
     setSourceId('');
     setSourceName('');
+    setEvalSetId(initialSource?.parentId || '');
+    setEvalSetVersionId(sourceType === 'eval_set' ? initialSource?.id || '' : '');
     setSelectedCaseIDs([]);
     setSourceFields([]);
     setVariableMappings({});
@@ -133,7 +144,9 @@ export function SmartOptimizeWizard({
 
   const canNext = () => {
     if (step === 0) {
-      return Boolean((sourceId || initialSource?.id)?.trim());
+      return sourceType === 'experiment'
+        ? Boolean((sourceId || initialSource?.id)?.trim())
+        : Boolean(evalSetId.trim() && evalSetVersionId.trim());
     }
     if (step === 1) {
       return (
@@ -189,8 +202,8 @@ export function SmartOptimizeWizard({
               }
             : {
                 type: 'eval_set',
-                eval_set_id: effectiveSourceId,
-                eval_set_version_id: effectiveSourceId,
+                eval_set_id: evalSetId,
+                eval_set_version_id: evalSetVersionId,
                 eval_set_name: effectiveSourceName,
               },
         case_item_ids: selectedCaseIDs,
@@ -283,7 +296,7 @@ export function SmartOptimizeWizard({
             label={
               sourceType === 'experiment'
                 ? I18n.t('smart_optimize_experiment_id', '实验 ID')
-                : I18n.t('smart_optimize_eval_set_id', '评测集版本 ID')
+                : I18n.t('smart_optimize_eval_set_id', '评测集与版本')
             }
           >
             {sourceType === 'experiment' ? (
@@ -296,17 +309,28 @@ export function SmartOptimizeWizard({
                 }}
               />
             ) : (
-              <Input
-                value={sourceId || initialSource?.id || ''}
-                placeholder={I18n.t(
-                  'smart_optimize_eval_set_placeholder',
-                  '输入评测集版本 ID',
-                )}
-                onChange={v => setSourceId(String(v))}
-              />
+              <div className="flex flex-col gap-3">
+                <EvaluateSetSelect
+                  value={evalSetId || undefined}
+                  disableAddEvalSet
+                  onChange={value => {
+                    setEvalSetId(String(value || ''));
+                    setEvalSetVersionId('');
+                    setSelectedCaseIDs([]);
+                  }}
+                />
+                <EvaluateSetVersionSelect
+                  evaluationSetId={evalSetId}
+                  value={evalSetVersionId || undefined}
+                  onChange={value => {
+                    setEvalSetVersionId(String(value || ''));
+                    setSelectedCaseIDs([]);
+                  }}
+                />
+              </div>
             )}
           </Form.Slot>
-          <Form.Slot
+          {sourceType === 'experiment' ? <Form.Slot
             label={I18n.t('smart_optimize_sample_filter', '服务端样本过滤')}
           >
             <div className="flex items-center gap-3">
@@ -330,7 +354,7 @@ export function SmartOptimizeWizard({
                 {I18n.t('smart_optimize_only_failed', '仅非满分样本')}
               </Checkbox>
             </div>
-          </Form.Slot>
+          </Form.Slot> : null}
           <Form.Slot
             label={I18n.t('smart_optimize_source_name', '显示名称（可选）')}
           >
@@ -353,17 +377,28 @@ export function SmartOptimizeWizard({
           <Typography.Text type="secondary" size="small">
             {I18n.t(
               'smart_optimize_case_rule',
-              `请选择 ${MIN_CASES}-${MAX_CASES} 条实验数据。`,
+              `请选择 ${MIN_CASES}-${MAX_CASES} 条${sourceType === 'experiment' ? '实验数据' : '评测集 Goodcase'}。`,
             )}
           </Typography.Text>
           <div className="mt-3">
-            <ExperimentCaseSelector
-              spaceID={spaceID || ''}
-              experimentID={sourceId || initialSource?.id || ''}
-              selectedIDs={selectedCaseIDs}
-              onSelectedIDsChange={setSelectedCaseIDs}
-              onFieldsChange={setSourceFields}
-            />
+            {sourceType === 'experiment' ? (
+              <ExperimentCaseSelector
+                spaceID={spaceID || ''}
+                experimentID={sourceId || initialSource?.id || ''}
+                selectedIDs={selectedCaseIDs}
+                onSelectedIDsChange={setSelectedCaseIDs}
+                onFieldsChange={setSourceFields}
+              />
+            ) : (
+              <EvaluationSetCaseSelector
+                spaceID={spaceID || ''}
+                evaluationSetID={evalSetId}
+                versionID={evalSetVersionId}
+                selectedIDs={selectedCaseIDs}
+                onSelectedIDsChange={setSelectedCaseIDs}
+                onFieldsChange={setSourceFields}
+              />
+            )}
           </div>
         </div>
       ) : null}

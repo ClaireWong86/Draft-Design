@@ -43,6 +43,19 @@ func TestRenderCandidateMessagesMissingVariable(t *testing.T) {
 	}
 }
 
+func TestRenderCandidateMessagesUsesMultimodalMarker(t *testing.T) {
+	content := "inspect {{IMAGE_TIRE}}"
+	rendered, err := renderCandidateMessages([]*promptdto.Message{{Content: &content}}, map[string]any{
+		"IMAGE_TIRE": []any{map[string]any{"content_type": "Image", "image": map[string]any{"url": "https://example.test/tire.jpg"}}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := rendered[0].GetContent(); got != "inspect [多模态输入见后续用户消息]" {
+		t.Fatalf("unexpected content: %s", got)
+	}
+}
+
 func TestLookupMappedValue(t *testing.T) {
 	source := map[string]any{"payload": map[string]any{"input": map[string]any{"question": "q"}}}
 	if got, ok := lookupMappedValue(source, "payload.input.question"); !ok || got != "q" {

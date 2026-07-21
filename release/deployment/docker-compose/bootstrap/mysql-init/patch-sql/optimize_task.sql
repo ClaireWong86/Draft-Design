@@ -6,6 +6,7 @@ CREATE TABLE IF NOT EXISTS `optimize_task` (
   `name` varchar(128) NOT NULL DEFAULT '' COMMENT 'Task name',
   `source_type` varchar(32) NOT NULL COMMENT 'experiment or eval_set',
   `source_id` bigint unsigned NOT NULL DEFAULT 0 COMMENT 'Experiment or evaluation set version ID',
+  `source` json DEFAULT NULL COMMENT 'Immutable optimization source snapshot',
   `case_item_ids` json NOT NULL COMMENT 'Selected case IDs',
   `mapping` json NOT NULL COMMENT 'Field mapping snapshot',
   `baseline_prompt` json NOT NULL COMMENT 'Immutable baseline prompt snapshot',

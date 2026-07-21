@@ -203,6 +203,26 @@ func TestContentTypeDO2DTO(t *testing.T) {
 
 func TestMessageDO2DTO(t *testing.T) {
 	assert.Nil(t, MessageDO2DTO(nil))
+	t.Run("preserves multipart image", func(t *testing.T) {
+		imageURL := "/cozeloop-minio/tire.jpg?signature=test"
+		text := "inspect this image"
+		got := MessageDO2DTO(&commonentity.Message{
+			Role: commonentity.RoleUser,
+			Content: &commonentity.Content{
+				ContentType: gptr.Of(commonentity.ContentTypeMultipart),
+				MultiPart: []*commonentity.Content{
+					{ContentType: gptr.Of(commonentity.ContentTypeText), Text: &text},
+					{ContentType: gptr.Of(commonentity.ContentTypeImage), Image: &commonentity.Image{URL: &imageURL}},
+				},
+			},
+		})
+		assert.Nil(t, got.Content)
+		assert.Len(t, got.MultimodalContents, 2)
+		assert.Equal(t, runtimedto.ChatMessagePartTypeText, got.MultimodalContents[0].GetType())
+		assert.Equal(t, text, got.MultimodalContents[0].GetText())
+		assert.Equal(t, runtimedto.ChatMessagePartTypeImageURL, got.MultimodalContents[1].GetType())
+		assert.Equal(t, imageURL, got.MultimodalContents[1].GetImageURL().GetURL())
+	})
 }
 
 func TestFunctionDO2DTO(t *testing.T) {

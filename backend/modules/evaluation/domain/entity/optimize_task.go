@@ -25,6 +25,7 @@ type OptimizeTaskRecord struct {
 	Name               string
 	SourceType         string
 	SourceID           int64
+	SourceJSON         string
 	CaseItemIDsJSON    string
 	MappingJSON        string
 	BaselinePromptJSON string

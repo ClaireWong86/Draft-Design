@@ -16,6 +16,7 @@ import (
 	"github.com/pkg/errors"
 
 	"github.com/coze-dev/coze-loop/backend/modules/llm/domain/entity"
+	"github.com/coze-dev/coze-loop/backend/pkg/logs"
 )
 
 type joyBuildChatModel struct {
@@ -26,10 +27,10 @@ type joyBuildChatModel struct {
 }
 
 type joyBuildRequest struct {
-	Model             string                    `json:"model"`
-	Contents          []joyBuildContent         `json:"contents"`
+	Model             string                     `json:"model"`
+	Contents          []joyBuildContent          `json:"contents"`
 	SystemInstruction *joyBuildSystemInstruction `json:"systemInstruction,omitempty"`
-	GenerationConfig  *joyBuildGenerationConfig `json:"generationConfig,omitempty"`
+	GenerationConfig  *joyBuildGenerationConfig  `json:"generationConfig,omitempty"`
 }
 
 type joyBuildSystemInstruction struct {
@@ -58,10 +59,10 @@ type joyBuildFileData struct {
 }
 
 type joyBuildGenerationConfig struct {
-	MaxOutputTokens *int     `json:"maxOutputTokens,omitempty"`
-	Temperature     *float32 `json:"temperature,omitempty"`
-	TopP            *float32 `json:"topP,omitempty"`
-	StopSequences   []string `json:"stopSequences,omitempty"`
+	MaxOutputTokens  *int     `json:"maxOutputTokens,omitempty"`
+	Temperature      *float32 `json:"temperature,omitempty"`
+	TopP             *float32 `json:"topP,omitempty"`
+	StopSequences    []string `json:"stopSequences,omitempty"`
 	ResponseMIMEType string   `json:"responseMimeType,omitempty"`
 }
 
@@ -105,6 +106,8 @@ func (m *joyBuildChatModel) Generate(ctx context.Context, input []*entity.Messag
 	if err != nil {
 		return nil, err
 	}
+	inlineImages, fileImages, inlineBytes := joyBuildImageStats(reqBody)
+	logs.CtxInfo(ctx, "joybuild request structure: inline_images=%d file_images=%d inline_bytes=%d", inlineImages, fileImages, inlineBytes)
 	payload, err := sonic.Marshal(reqBody)
 	if err != nil {
 		return nil, err
@@ -140,6 +143,24 @@ func (m *joyBuildChatModel) Generate(ctx context.Context, input []*entity.Messag
 			FinishReason: finishReason,
 		},
 	}, nil
+}
+
+func joyBuildImageStats(req *joyBuildRequest) (inlineImages, fileImages, inlineBytes int) {
+	if req == nil {
+		return 0, 0, 0
+	}
+	for _, content := range req.Contents {
+		for _, part := range content.Parts {
+			if part.InlineData != nil {
+				inlineImages++
+				inlineBytes += len(part.InlineData.Data)
+			}
+			if part.FileData != nil {
+				fileImages++
+			}
+		}
+	}
+	return inlineImages, fileImages, inlineBytes
 }
 
 func (m *joyBuildChatModel) Stream(ctx context.Context, input []*entity.Message, opts ...entity.Option) (entity.IStreamReader, error) {

@@ -10,6 +10,7 @@ import (
 	"strings"
 
 	promptdto "github.com/coze-dev/coze-loop/backend/kitex_gen/coze/loop/prompt/domain/prompt"
+	"github.com/coze-dev/coze-loop/backend/modules/evaluation/domain/entity"
 )
 
 var optimizeVariablePattern = regexp.MustCompile(`\{\{\s*([A-Za-z_][A-Za-z0-9_.-]*)\s*\}\}`)
@@ -67,6 +68,9 @@ func renderTemplateText(text string, variables map[string]any, missing map[strin
 		case nil:
 			return ""
 		default:
+			if containsMappedMedia(typed) {
+				return "[多模态输入见后续用户消息]"
+			}
 			encoded, err := json.Marshal(typed)
 			if err != nil {
 				return fmt.Sprint(typed)
@@ -74,6 +78,21 @@ func renderTemplateText(text string, variables map[string]any, missing map[strin
 			return string(encoded)
 		}
 	})
+}
+
+func containsMappedMedia(value any) bool {
+	switch typed := value.(type) {
+	case []any:
+		for _, part := range typed {
+			if containsMappedMedia(part) {
+				return true
+			}
+		}
+	case map[string]any:
+		kind, _ := typed["content_type"].(string)
+		return strings.EqualFold(kind, string(entity.ContentTypeImage)) || strings.EqualFold(kind, string(entity.ContentTypeVideo))
+	}
+	return false
 }
 
 // lookupMappedValue accepts explicit JSON paths (a.b.c) and, for backwards
