@@ -32,6 +32,7 @@ export type OptimizeTaskStatus =
   | 'queued'
   | 'running'
   | 'succeeded'
+  | 'no_gain'
   | 'failed'
   | 'cancelled';
 

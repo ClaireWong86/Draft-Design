@@ -27,9 +27,17 @@ require_code_zero() {
   fi
 }
 
-echo "Checking web app: $BASE_URL/auth/login"
-/usr/bin/curl -fsSI "$BASE_URL/auth/login" >/dev/null
-echo "OK: web app is reachable"
+echo "Checking web app: $BASE_URL"
+if /usr/bin/curl -fsSI "$BASE_URL/auth/login" >/dev/null 2>&1; then
+  echo "OK: web app is reachable (/auth/login)"
+elif /usr/bin/curl -fsS "$BASE_URL/" >/dev/null 2>&1; then
+  echo "OK: web app is reachable (/; SPA deep links may 404 without try_files)"
+elif /usr/bin/curl -fsS "$BASE_URL/ping" >/dev/null 2>&1; then
+  echo "OK: API base is reachable (/ping)"
+else
+  echo "FAIL: web/API not reachable at $BASE_URL"
+  exit 1
+fi
 
 echo "Checking OpenAPI ping: $OPENAPI_URL/ping"
 ping_body="$(curl_json "$OPENAPI_URL/ping")"

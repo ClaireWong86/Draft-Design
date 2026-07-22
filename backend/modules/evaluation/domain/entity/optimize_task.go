@@ -9,6 +9,7 @@ const (
 	OptimizeTaskStatusQueued    = "queued"
 	OptimizeTaskStatusRunning   = "running"
 	OptimizeTaskStatusSucceeded = "succeeded"
+	OptimizeTaskStatusNoGain    = "no_gain"
 	OptimizeTaskStatusFailed    = "failed"
 	OptimizeTaskStatusCancelled = "cancelled"
 	OptimizeTaskMaxAttempts     = 3

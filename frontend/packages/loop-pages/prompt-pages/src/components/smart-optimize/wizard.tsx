@@ -31,10 +31,12 @@ import {
   Typography,
 } from '@coze-arch/coze-design';
 
+import { validatePromptForSmartOptimize } from './validate-prompt';
 import { type OptimizeSourceType } from './types';
 import { ExperimentCaseSelector } from './experiment-case-selector';
 import { EvaluationSetCaseSelector } from './evaluation-set-case-selector';
 import { optimizeTaskClient } from './client';
+import { buildSmartOptimizeExperimentFilters } from './build-experiment-filters';
 
 const MIN_CASES = 10;
 const MAX_CASES = 500;
@@ -68,7 +70,10 @@ export function SmartOptimizeWizard({
   onClose: () => void;
   onSubmitted?: (taskId: string) => void;
 }) {
-  const firstStep = initialSource && (sourceType === 'experiment' || initialSource.parentId) ? 1 : 0;
+  const firstStep =
+    initialSource && (sourceType === 'experiment' || initialSource.parentId)
+      ? 1
+      : 0;
   const [step, setStep] = useState(firstStep);
   const [sourceId, setSourceId] = useState('');
   const [sourceName, setSourceName] = useState('');
@@ -91,6 +96,10 @@ export function SmartOptimizeWizard({
   const [scoreMax, setScoreMax] = useState('');
   const [onlyFailed, setOnlyFailed] = useState(false);
   const modelService = useModelList(spaceID || '');
+  const experimentFilters = useMemo(
+    () => buildSmartOptimizeExperimentFilters(prompt?.id),
+    [prompt?.id],
+  );
 
   const title = useMemo(
     () =>
@@ -123,7 +132,9 @@ export function SmartOptimizeWizard({
     setSourceId('');
     setSourceName('');
     setEvalSetId(initialSource?.parentId || '');
-    setEvalSetVersionId(sourceType === 'eval_set' ? initialSource?.id || '' : '');
+    setEvalSetVersionId(
+      sourceType === 'eval_set' ? initialSource?.id || '' : '',
+    );
     setSelectedCaseIDs([]);
     setSourceFields([]);
     setVariableMappings({});
@@ -173,6 +184,17 @@ export function SmartOptimizeWizard({
     if (!spaceID || !prompt?.id) {
       Toast.error(
         I18n.t('smart_optimize_missing_context', '缺少空间或 Prompt 上下文'),
+      );
+      return;
+    }
+    const promptCheck = validatePromptForSmartOptimize(prompt);
+    if (!promptCheck.ok) {
+      Toast.warning(
+        promptCheck.message ||
+          I18n.t(
+            'smart_optimize_prompt_invalid',
+            '当前 Prompt 不满足智能优化条件',
+          ),
       );
       return;
     }
@@ -303,6 +325,11 @@ export function SmartOptimizeWizard({
               <ExperimentsSelect
                 value={sourceId || initialSource?.id || undefined}
                 disableAddExperiment
+                filters={experimentFilters}
+                placeholder={I18n.t(
+                  'smart_optimize_experiment_filter_hint',
+                  '仅展示已成功且评测对象为本 Prompt 的实验',
+                )}
                 onChange={value => {
                   setSourceId(String(value || ''));
                   setSelectedCaseIDs([]);
@@ -330,31 +357,35 @@ export function SmartOptimizeWizard({
               </div>
             )}
           </Form.Slot>
-          {sourceType === 'experiment' ? <Form.Slot
-            label={I18n.t('smart_optimize_sample_filter', '服务端样本过滤')}
-          >
-            <div className="flex items-center gap-3">
-              <Input
-                className="w-32"
-                value={scoreMin}
-                placeholder={I18n.t('smart_optimize_score_min', '最低分')}
-                onChange={value => setScoreMin(String(value))}
-              />
-              <span>～</span>
-              <Input
-                className="w-32"
-                value={scoreMax}
-                placeholder={I18n.t('smart_optimize_score_max', '最高分')}
-                onChange={value => setScoreMax(String(value))}
-              />
-              <Checkbox
-                checked={onlyFailed}
-                onChange={event => setOnlyFailed(Boolean(event.target.checked))}
-              >
-                {I18n.t('smart_optimize_only_failed', '仅非满分样本')}
-              </Checkbox>
-            </div>
-          </Form.Slot> : null}
+          {sourceType === 'experiment' ? (
+            <Form.Slot
+              label={I18n.t('smart_optimize_sample_filter', '服务端样本过滤')}
+            >
+              <div className="flex items-center gap-3">
+                <Input
+                  className="w-32"
+                  value={scoreMin}
+                  placeholder={I18n.t('smart_optimize_score_min', '最低分')}
+                  onChange={value => setScoreMin(String(value))}
+                />
+                <span>～</span>
+                <Input
+                  className="w-32"
+                  value={scoreMax}
+                  placeholder={I18n.t('smart_optimize_score_max', '最高分')}
+                  onChange={value => setScoreMax(String(value))}
+                />
+                <Checkbox
+                  checked={onlyFailed}
+                  onChange={event =>
+                    setOnlyFailed(Boolean(event.target.checked))
+                  }
+                >
+                  {I18n.t('smart_optimize_only_failed', '仅非满分样本')}
+                </Checkbox>
+              </div>
+            </Form.Slot>
+          ) : null}
           <Form.Slot
             label={I18n.t('smart_optimize_source_name', '显示名称（可选）')}
           >

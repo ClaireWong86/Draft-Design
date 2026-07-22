@@ -7,4 +7,5 @@ export { SmartOptimizeTaskPanel } from './task-panel';
 export { renderSmartOptimizeHeaderButtons } from './render-header-buttons';
 export { mockOptimizeTaskClient } from './mock-client';
 export { optimizeTaskClient } from './client';
+export { validatePromptForSmartOptimize } from './validate-prompt';
 export type { OptimizeSourceType, OptimizeTask } from './types';

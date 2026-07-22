@@ -19,12 +19,14 @@ import {
 } from '@cozeloop/biz-hooks-adapter';
 import { uploadFile } from '@cozeloop/biz-components-adapter';
 import { type Prompt } from '@cozeloop/api-schema/prompt';
+import { Toast } from '@coze-arch/coze-design';
 
 import { TraceTab } from '@/components/trace-tabs';
 import {
   renderSmartOptimizeHeaderButtons,
   SmartOptimizeCreateConfirmModal,
   SmartOptimizeTaskPanel,
+  validatePromptForSmartOptimize,
 } from '@/components/smart-optimize';
 import { PromptWorkspacePanel } from '@/components/prompt-workspace-panel';
 import { ExecuteHistoryPanel } from '@/components/execute-history-panel';
@@ -162,6 +164,17 @@ export default function PromptDevelopPage() {
         renderHeaderButtons={buttons =>
           renderSmartOptimizeHeaderButtons(buttons, {
             onOpenWizard: sourceType => {
+              const promptCheck = validatePromptForSmartOptimize(promptInfo);
+              if (!promptCheck.ok) {
+                Toast.warning(
+                  promptCheck.message ||
+                    I18n.t(
+                      'smart_optimize_prompt_invalid',
+                      '当前 Prompt 不满足智能优化条件',
+                    ),
+                );
+                return;
+              }
               if (sourceType === 'experiment') {
                 setConfirmVisible(true);
                 return;

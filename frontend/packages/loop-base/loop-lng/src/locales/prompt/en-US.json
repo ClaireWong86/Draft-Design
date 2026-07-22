@@ -356,5 +356,12 @@
   "smart_optimize_view_report": "Report",
   "smart_optimize_report": "Smart optimize report",
   "smart_optimize_adopt": "Adopt to draft",
-  "smart_optimize_adopted": "Applied to draft. Click Submit New Version to commit."
+  "smart_optimize_adopted": "Applied to draft. Click Submit New Version to commit.",
+  "smart_optimize_no_gain": "Did not beat baseline gain",
+  "smart_optimize_status_no_gain": "No gain",
+  "smart_optimize_candidate_ready": "Candidate ready (awaiting re-eval)",
+  "smart_optimize_failed": "Failed",
+  "smart_optimize_experiment_filter_hint": "Only successful experiments targeting this Prompt",
+  "smart_optimize_prompt_invalid": "Current Prompt does not meet smart optimize requirements",
+  "smart_optimize_view_sample": "View sample"
 }

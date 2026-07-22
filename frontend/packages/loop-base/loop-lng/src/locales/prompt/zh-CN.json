@@ -356,5 +356,12 @@
   "smart_optimize_view_report": "报告",
   "smart_optimize_report": "智能优化报告",
   "smart_optimize_adopt": "采纳到草稿",
-  "smart_optimize_adopted": "已写入草稿，请点击「提交新版」完成版本提交"
+  "smart_optimize_adopted": "已写入草稿，请点击「提交新版」完成版本提交",
+  "smart_optimize_no_gain": "未超过基线增益",
+  "smart_optimize_status_no_gain": "未提升",
+  "smart_optimize_candidate_ready": "候选已生成（待重评）",
+  "smart_optimize_failed": "失败",
+  "smart_optimize_experiment_filter_hint": "仅展示已成功且评测对象为本 Prompt 的实验",
+  "smart_optimize_prompt_invalid": "当前 Prompt 不满足智能优化条件",
+  "smart_optimize_view_sample": "查看样本"
 }

@@ -1,12 +1,14 @@
 // Copyright (c) 2025 coze-dev Authors
 // SPDX-License-Identifier: Apache-2.0
 /* eslint-disable @coze-arch/max-line-per-function -- task list + report modal */
+/* eslint-disable max-lines-per-function -- task list + report modal */
 /* eslint-disable @typescript-eslint/no-magic-numbers -- poll interval / score digits */
 /* eslint-disable security/detect-object-injection -- status tag map lookup */
 import { useCallback, useEffect, useMemo, useState } from 'react';
 
 import { usePromptStore } from '@cozeloop/prompt-components-v2';
 import { I18n } from '@cozeloop/i18n-adapter';
+import { useOpenWindow } from '@cozeloop/biz-hooks-adapter';
 import {
   type OptimizeCaseDetail,
   Button,
@@ -25,6 +27,7 @@ import {
   type OptimizeTask,
   type OptimizeTaskStatus,
 } from './types';
+import { buildSampleJumpPath } from './sample-jump';
 import { optimizeTaskClient } from './client';
 
 const STATUS_TAG: Record<OptimizeTaskStatus, { color: string; label: string }> =
@@ -32,9 +35,22 @@ const STATUS_TAG: Record<OptimizeTaskStatus, { color: string; label: string }> =
     queued: { color: 'grey', label: '排队中' },
     running: { color: 'blue', label: '运行中' },
     succeeded: { color: 'green', label: '成功' },
+    no_gain: { color: 'orange', label: '未提升' },
     failed: { color: 'red', label: '失败' },
     cancelled: { color: 'orange', label: '已终止' },
   };
+
+function hasScoreDelta(task: OptimizeTask): boolean {
+  return (
+    Boolean(task.result) &&
+    typeof task.result?.before_score === 'number' &&
+    typeof task.result?.after_score === 'number'
+  );
+}
+
+function canViewReport(status: OptimizeTaskStatus): boolean {
+  return status === 'succeeded' || status === 'no_gain';
+}
 
 function applyAdoptedPrompt(afterPrompt: OptimizePromptSnapshot) {
   const { setMessageList } = usePromptStore.getState();
@@ -55,6 +71,7 @@ export function SmartOptimizeTaskPanel({
   spaceID?: string;
   onAdoptSuccess?: () => void;
 }) {
+  const { openBlank } = useOpenWindow();
   const [tasks, setTasks] = useState<OptimizeTask[]>([]);
   const [loading, setLoading] = useState(false);
   const [reportTask, setReportTask] = useState<OptimizeTask | undefined>();
@@ -260,20 +277,33 @@ export function SmartOptimizeTaskPanel({
             {
               title: I18n.t('smart_optimize_col_result', '优化结果'),
               width: 140,
-              render: (_: unknown, row: OptimizeTask) =>
-                row.status === 'succeeded' &&
-                row.result &&
-                typeof row.result.before_score === 'number' &&
-                typeof row.result.after_score === 'number'
-                  ? `${row.result.before_score.toFixed(2)} → ${row.result.after_score.toFixed(2)}`
-                  : row.status === 'succeeded'
-                    ? I18n.t(
-                        'smart_optimize_candidate_ready',
-                        '候选已生成（待重评）',
-                      )
-                    : row.status === 'failed'
-                      ? row.error_msg || I18n.t('smart_optimize_failed', '失败')
-                      : '-',
+              render: (_: unknown, row: OptimizeTask) => {
+                if (hasScoreDelta(row)) {
+                  const before = row.result?.before_score;
+                  const after = row.result?.after_score;
+                  if (typeof before === 'number' && typeof after === 'number') {
+                    return `${before.toFixed(2)} → ${after.toFixed(2)}`;
+                  }
+                }
+                if (row.status === 'succeeded') {
+                  return I18n.t(
+                    'smart_optimize_candidate_ready',
+                    '候选已生成（待重评）',
+                  );
+                }
+                if (row.status === 'no_gain') {
+                  return (
+                    row.result?.diagnosis?.failure_modes?.[0] ||
+                    I18n.t('smart_optimize_no_gain', '未超过基线增益')
+                  );
+                }
+                if (row.status === 'failed') {
+                  return (
+                    row.error_msg || I18n.t('smart_optimize_failed', '失败')
+                  );
+                }
+                return '-';
+              },
             },
             {
               title: I18n.t('smart_optimize_col_eval_set', '关联评测集'),
@@ -296,7 +326,7 @@ export function SmartOptimizeTaskPanel({
               width: 200,
               render: (_: unknown, row: OptimizeTask) => (
                 <div className="flex gap-2">
-                  {row.status === 'succeeded' ? (
+                  {canViewReport(row.status) ? (
                     <Button
                       size="small"
                       color="brand"
@@ -331,12 +361,14 @@ export function SmartOptimizeTaskPanel({
             <Button onClick={() => setReportTask(undefined)}>
               {I18n.t('close', '关闭')}
             </Button>
-            <Button
-              color="brand"
-              onClick={() => reportTask && void handleAdopt(reportTask)}
-            >
-              {I18n.t('smart_optimize_adopt', '采纳到草稿')}
-            </Button>
+            {reportTask?.status === 'succeeded' ? (
+              <Button
+                color="brand"
+                onClick={() => reportTask && void handleAdopt(reportTask)}
+              >
+                {I18n.t('smart_optimize_adopt', '采纳到草稿')}
+              </Button>
+            ) : null}
           </div>
         }
       >
@@ -444,6 +476,28 @@ export function SmartOptimizeTaskPanel({
                         : '-';
                     },
                   })),
+                  {
+                    title: I18n.t('smart_optimize_col_actions', '操作'),
+                    width: 110,
+                    render: (_: unknown, row: OptimizeCaseDetail) => {
+                      const path = buildSampleJumpPath(
+                        reportTask.source,
+                        row.case_id,
+                      );
+                      if (!path) {
+                        return '-';
+                      }
+                      return (
+                        <Button
+                          size="small"
+                          type="tertiary"
+                          onClick={() => openBlank(path)}
+                        >
+                          {I18n.t('smart_optimize_view_sample', '查看样本')}
+                        </Button>
+                      );
+                    },
+                  },
                 ],
               }}
             />

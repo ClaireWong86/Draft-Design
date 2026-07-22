@@ -1,11 +1,13 @@
 // Copyright (c) 2025 coze-dev Authors
 // SPDX-License-Identifier: Apache-2.0
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 
 import { I18n } from '@cozeloop/i18n-adapter';
 import { ExperimentsSelect } from '@cozeloop/evaluate-components';
 import { type Prompt } from '@cozeloop/api-schema/prompt';
 import { Modal, Typography } from '@coze-arch/coze-design';
+
+import { buildSmartOptimizeExperimentFilters } from './build-experiment-filters';
 
 interface SmartOptimizeCreateConfirmModalProps {
   visible: boolean;
@@ -24,6 +26,10 @@ export function SmartOptimizeCreateConfirmModal({
   const version =
     prompt?.prompt_commit?.commit_info?.version ||
     prompt?.prompt_basic?.latest_version;
+  const filters = useMemo(
+    () => buildSmartOptimizeExperimentFilters(prompt?.id),
+    [prompt?.id],
+  );
 
   const handleCancel = () => {
     setExperimentID('');
@@ -58,6 +64,12 @@ export function SmartOptimizeCreateConfirmModal({
           <ExperimentsSelect
             className="mt-2 w-full"
             value={experimentID || undefined}
+            filters={filters}
+            disableAddExperiment
+            placeholder={I18n.t(
+              'smart_optimize_experiment_filter_hint',
+              '仅展示已成功且评测对象为本 Prompt 的实验',
+            )}
             onChange={value => setExperimentID(String(value || ''))}
           />
         </div>

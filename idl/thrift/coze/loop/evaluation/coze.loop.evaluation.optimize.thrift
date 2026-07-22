@@ -11,6 +11,7 @@ typedef string OptimizeTaskStatus (ts.enum="true")
 const OptimizeTaskStatus OptimizeTaskStatusQueued = "queued"
 const OptimizeTaskStatus OptimizeTaskStatusRunning = "running"
 const OptimizeTaskStatus OptimizeTaskStatusSucceeded = "succeeded"
+const OptimizeTaskStatus OptimizeTaskStatusNoGain = "no_gain"
 const OptimizeTaskStatus OptimizeTaskStatusFailed = "failed"
 const OptimizeTaskStatus OptimizeTaskStatusCancelled = "cancelled"
 

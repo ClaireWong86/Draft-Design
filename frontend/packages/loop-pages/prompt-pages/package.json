@@ -17,6 +17,7 @@
     "@cozeloop/biz-hooks-adapter": "workspace:*",
     "@cozeloop/components": "workspace:*",
     "@cozeloop/evaluate-components": "workspace:*",
+    "@cozeloop/guard": "workspace:*",
     "@cozeloop/hooks": "workspace:*",
     "@cozeloop/i18n-adapter": "workspace:*",
     "@cozeloop/observation-adapter": "workspace:*",

@@ -22,6 +22,8 @@ const (
 
 	OptimizeTaskStatusSucceeded = "succeeded"
 
+	OptimizeTaskStatusNoGain = "no_gain"
+
 	OptimizeTaskStatusFailed = "failed"
 
 	OptimizeTaskStatusCancelled = "cancelled"

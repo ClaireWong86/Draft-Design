@@ -13,7 +13,7 @@
 
 ```text
 FE (Header 下拉 + 四工作区 Tab + Confirm Modal + Create Page)
-  → OptimizeTask API（同步：创建/查询/终止/采纳）
+  → OptimizeTask API（同步：创建/查询/终止）
   → OptimizeWorker（异步：诊断 → 多候选改写 → 原评估器重评 → 验证集选优）
        ├─ Evaluation APIs（实验明细 / 评测集条目）
        ├─ Prompt Version API（加载 / 采纳后由用户提交）
@@ -54,7 +54,7 @@ FE (Header 下拉 + 四工作区 Tab + Confirm Modal + Create Page)
 | 路径 | `J(P)` |
 |------|--------|
 | 实验（Badcase） | `mean(evaluator_scores)`，多评估器可加权；优先人工校准分 |
-| 评测集（Goodcase） | 有评估器则复用；否则 LLM-as-Judge（输出 vs `reference_output`）或结构化字段匹配分 |
+| 评测集（Goodcase） | 原 Prompt 与候选统一由用户选择的优化模型执行 LLM-as-Judge（输出 vs `reference_output`）；裁判前做 JSON/拒答硬校验与可疑全满分复核；验证集增益 ≤ 0.001 时任务终态为 `no_gain`（未提升），保留报告、不可采纳 |
 
 ### 3.3 诊断 / 改写 / 选择
 
@@ -66,10 +66,11 @@ FE (Header 下拉 + 四工作区 Tab + Confirm Modal + Create Page)
 
 | 模式 | 候选数 N | 最大轮次 T | 每轮评估样本 | 诊断条数 K |
 |------|----------|------------|--------------|------------|
-| 性价比优先 | 1 | 2–3 | 抽样 30%–50%（下限 10） | 5–8 |
-| 效果优先 | 3–5 | 5–8 | 全量选中样本 | 10–20 |
+| 性价比优先（`mode_score ≤ 0.33`） | 2 | 1 | 固定优化集/验证集拆分 | 按证据样本生成 |
+| 均衡（`0.33 < mode_score < 0.67`） | 2 | 2 | 固定优化集/验证集拆分 | 按证据样本生成 |
+| 效果优先（`mode_score ≥ 0.67`） | 3 | 3 | 固定优化集/验证集拆分 | 按证据样本生成 |
 
-`mode_score ∈ [0,1]`：0=性价比优先，1=效果优先；中间线性插值。
+`mode_score ∈ [0,1]`：0=性价比优先，1=效果优先；当前按上述三档映射，不做线性插值。
 
 ### 3.5 停止条件
 
@@ -181,7 +182,7 @@ Prompt Header / Experiment Detail
 
 ### 6.2 采纳
 
-`AdoptOptimizeTask`（或直接读 `result.after_prompt`）→ 将完整 `messages[]` 写入 `usePromptStore.setMessageList` → Toast 引导用户点「提交新版」。不绕过版本提交校验，不只替换 system 文本。
+前端直接读取 `result.after_prompt` → 将完整 `messages[]` 写入 `usePromptStore.setMessageList` → Toast 引导用户点「提交新版」。当前无独立 Adopt RPC；采纳不绕过版本提交校验，也不只替换 system 文本。
 
 ### 6.3 文本与非文本能力边界
 

@@ -6,6 +6,7 @@ import { useState } from 'react';
 import {
   SmartOptimizeHeaderDropdown,
   type OptimizeSourceType,
+  validatePromptForSmartOptimize,
 } from '@cozeloop/prompt-pages';
 import { I18n } from '@cozeloop/i18n-adapter';
 import { useNavigateModule, useSpace } from '@cozeloop/biz-hooks-adapter';
@@ -67,6 +68,17 @@ export function ExperimentSmartOptimizeEntry({
       });
       if (!response.prompt) {
         throw new Error('Prompt not found');
+      }
+      const promptCheck = validatePromptForSmartOptimize(response.prompt);
+      if (!promptCheck.ok) {
+        Toast.warning(
+          promptCheck.message ||
+            I18n.t(
+              'smart_optimize_prompt_invalid',
+              '当前 Prompt 不满足智能优化条件',
+            ),
+        );
+        return;
       }
       if (type === 'experiment') {
         setConfirmVisible(true);

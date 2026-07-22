@@ -39,6 +39,9 @@
       "path": "../../loop-base/components/tsconfig.build.json"
     },
     {
+      "path": "../../loop-base/guard/tsconfig.build.json"
+    },
+    {
       "path": "../../loop-base/i18n/tsconfig.build.json"
     },
     {

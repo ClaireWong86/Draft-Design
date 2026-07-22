@@ -7,6 +7,7 @@ import { I18n } from '@cozeloop/i18n-adapter';
 import {
   ColumnsManage,
   dealColumnsFromStorage,
+  getLogicFieldName,
   LogicEditor,
   type LogicField,
   type SemiTableSort,
@@ -154,6 +155,23 @@ export default function ({
     refreshKey,
     keywordSearch,
   });
+
+  useEffect(() => {
+    const itemId = new URLSearchParams(window.location.search).get('item_id');
+    if (!itemId) {
+      return;
+    }
+    setLogicFilter({
+      logicOperator: 'and',
+      exprs: [
+        {
+          left: getLogicFieldName(FieldType.ItemID, ''),
+          operator: 'equals',
+          right: itemId,
+        },
+      ],
+    });
+  }, [experimentID, setLogicFilter]);
 
   const activeItemStore = useExperimentDetailActiveItem({
     experimentIds,

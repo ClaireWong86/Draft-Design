@@ -4,6 +4,7 @@ export { default } from './app';
 export {
   SmartOptimizeHeaderDropdown,
   SmartOptimizeWizard,
+  validatePromptForSmartOptimize,
 } from './components/smart-optimize';
 export type {
   OptimizeSourceType,

@@ -44,6 +44,8 @@ Coze Loop helps developers develop and operate AI Agent more efficiently by prov
 > Refer to [Quick Start](https://github.com/coze-dev/coze-loop/wiki/2.-Quickstart) to learn in detail how to install and deploy the latest version of Coze Loop.
 
 ### Deployment method 1: Docker deployment (Docker Compose)
+
+> Prompt Loop fork 的 macOS 公司环境使用 Podman。请优先阅读 [Podman 本地 Runbook](./docs/prompt-loop/runbook.md)；本节保留为上游通用部署说明。
 >
 > Please install and start Docker Engine before you start.
 

@@ -264,7 +264,7 @@ func (a *OptimizeApplication) processTask(ctx context.Context, taskID int64) {
 		return
 	}
 	_ = a.repo.UpdateProgress(ctx, taskID, leaseToken, 20)
-	out, caseResults, err := a.runOptimizationLoop(ctx, record, leaseToken)
+	out, caseResults, status, err := a.runOptimizationLoop(ctx, record, leaseToken)
 	if err != nil {
 		_ = a.repo.Fail(ctx, taskID, leaseToken, err.Error())
 		return
@@ -275,7 +275,7 @@ func (a *OptimizeApplication) processTask(ctx context.Context, taskID int64) {
 		_ = a.repo.Fail(ctx, taskID, leaseToken, err.Error())
 		return
 	}
-	_ = a.repo.Complete(ctx, taskID, leaseToken, resultJSON)
+	_ = a.repo.Complete(ctx, taskID, leaseToken, resultJSON, status)
 }
 
 func optimizeWorkerContext(ctx context.Context, createdBy string) context.Context {
@@ -313,7 +313,7 @@ func policyForMode(modeScore float64) optimizePolicy {
 	return policy
 }
 
-func (a *OptimizeApplication) runOptimizationLoop(ctx context.Context, task *entity.OptimizeTaskRecord, leaseToken string) (*optimizerOutput, []candidateCaseResult, error) {
+func (a *OptimizeApplication) runOptimizationLoop(ctx context.Context, task *entity.OptimizeTaskRecord, leaseToken string) (*optimizerOutput, []candidateCaseResult, string, error) {
 	policy := policyForMode(task.ModeScore)
 	if task.SourceType == string(optimize.OptimizeSourceTypeEvalSet) {
 		var caseIDs []string
@@ -321,7 +321,9 @@ func (a *OptimizeApplication) runOptimizationLoop(ctx context.Context, task *ent
 		// The baseline runs once per case. Each candidate then needs one
 		// generation call, one inference call per case, and one judge call per
 		// bounded batch comparing baseline and candidate together.
-		required := len(caseIDs) + policy.rounds*policy.candidates*(len(caseIDs)+goodcaseJudgeBatchCount(len(caseIDs))+1)
+		// Reserve a second judge call per batch. It is consumed only when the
+		// first pass returns suspicious all-perfect scores.
+		required := len(caseIDs) + policy.rounds*policy.candidates*(len(caseIDs)+2*goodcaseJudgeBatchCount(len(caseIDs))+1)
 		if required > policy.maxModelCalls {
 			policy.maxModelCalls = required
 		}
@@ -329,7 +331,7 @@ func (a *OptimizeApplication) runOptimizationLoop(ctx context.Context, task *ent
 	ctx = context.WithValue(ctx, optimizeBudgetContextKey{}, &optimizeCallBudget{max: policy.maxModelCalls})
 	baselineOutputs, err := a.executeGoodcaseBaseline(ctx, task)
 	if err != nil {
-		return nil, nil, err
+		return nil, nil, "", err
 	}
 	optimizationIDs, validationIDs := splitCaseIDs(task.CaseItemIDsJSON, policy.validationRatio)
 	current := *task
@@ -343,7 +345,7 @@ func (a *OptimizeApplication) runOptimizationLoop(ctx context.Context, task *ent
 	feedback := ""
 	for round := 0; round < policy.rounds; round++ {
 		if err := a.repo.RenewLease(ctx, task.ID, leaseToken, time.Now().Add(optimizeStaleTaskTimeout)); err != nil {
-			return nil, nil, fmt.Errorf("renew optimize lease: %w", err)
+			return nil, nil, "", fmt.Errorf("renew optimize lease: %w", err)
 		}
 		previousBestScore := bestScore
 		roundBestScore := -1e100
@@ -351,18 +353,18 @@ func (a *OptimizeApplication) runOptimizationLoop(ctx context.Context, task *ent
 		for candidate := 0; candidate < policy.candidates; candidate++ {
 			out, err := a.generateCandidate(ctx, &current, feedback)
 			if err != nil {
-				return nil, nil, err
+				return nil, nil, "", err
 			}
 			cases, err := a.executeCandidateCases(ctx, task, out, baselineOutputs)
 			if err != nil {
-				return nil, nil, err
+				return nil, nil, "", err
 			}
 			score, scored := validationScore(cases, validationIDs)
 			if task.SourceType == string(optimize.OptimizeSourceTypeEvalSet) {
 				score, scored = validationGain(cases, validationIDs)
 			}
 			if !scored {
-				return nil, nil, errors.New("candidate evaluation produced no comparable scores")
+				return nil, nil, "", errors.New("candidate evaluation produced no comparable scores")
 			}
 			if bestOut == nil || score > bestScore {
 				bestOut, bestCases, bestScore = out, cases, score
@@ -377,7 +379,7 @@ func (a *OptimizeApplication) runOptimizationLoop(ctx context.Context, task *ent
 		feedback = strings.Join(roundBestOut.SuggestedChanges, "; ")
 		var snapshot optimize.OptimizePromptSnapshot
 		if err := json.Unmarshal([]byte(current.BaselinePromptJSON), &snapshot); err != nil {
-			return nil, nil, err
+			return nil, nil, "", err
 		}
 		setOptimizedInstruction(&snapshot, roundBestOut.OptimizedPrompt)
 		encoded, _ := json.Marshal(&snapshot)
@@ -385,12 +387,15 @@ func (a *OptimizeApplication) runOptimizationLoop(ctx context.Context, task *ent
 		_ = a.repo.UpdateProgress(ctx, task.ID, leaseToken, int32(25+(round+1)*50/policy.rounds))
 	}
 	if bestOut == nil {
-		return nil, nil, errors.New("optimizer produced no candidate")
+		return nil, nil, "", errors.New("optimizer produced no candidate")
 	}
 	if task.SourceType == string(optimize.OptimizeSourceTypeEvalSet) && bestScore <= policy.minGain {
-		return nil, nil, fmt.Errorf("no candidate improved the Goodcase baseline: best gain %.4f, required > %.4f", bestScore, policy.minGain)
+		bestOut.FailureModes = append([]string{
+			fmt.Sprintf("no candidate improved the Goodcase baseline: best gain %.4f, required > %.4f", bestScore, policy.minGain),
+		}, bestOut.FailureModes...)
+		return bestOut, bestCases, entity.OptimizeTaskStatusNoGain, nil
 	}
-	return bestOut, bestCases, nil
+	return bestOut, bestCases, entity.OptimizeTaskStatusSucceeded, nil
 }
 
 func splitCaseIDs(encoded string, validationRatio float64) ([]string, map[string]struct{}) {
@@ -529,6 +534,8 @@ func (a *OptimizeApplication) executeCandidateCases(ctx context.Context, task *e
 		if err := a.judgeGoodcaseBatches(ctx, task, results); err != nil {
 			return nil, err
 		}
+	} else if len(experimentItems) > 0 {
+		a.populateEvaluatorNames(ctx, task.WorkspaceID, results)
 	}
 	return results, nil
 }
@@ -665,11 +672,34 @@ func goodcaseJudgeVariables(input map[string]any) map[string]any {
 }
 
 func (a *OptimizeApplication) callGoodcaseJudgeBatch(ctx context.Context, task *entity.OptimizeTaskRecord, inputs []goodcaseJudgeInput) (*goodcaseJudgeOutput, error) {
+	judged, err := a.callGoodcaseJudgeBatchOnce(ctx, task, inputs, false)
+	if err != nil {
+		return nil, err
+	}
+	guardGoodcaseJudgeOutput(inputs, judged)
+	if !goodcaseJudgeOutputNeedsReview(judged) {
+		return judged, nil
+	}
+	reviewed, err := a.callGoodcaseJudgeBatchOnce(ctx, task, inputs, true)
+	if err != nil {
+		return nil, fmt.Errorf("review suspicious all-perfect goodcase scores: %w", err)
+	}
+	guardGoodcaseJudgeOutput(inputs, reviewed)
+	if err := mergeGoodcaseJudgeReview(judged, reviewed); err != nil {
+		return nil, fmt.Errorf("merge suspicious goodcase score review: %w", err)
+	}
+	return judged, nil
+}
+
+func (a *OptimizeApplication) callGoodcaseJudgeBatchOnce(ctx context.Context, task *entity.OptimizeTaskRecord, inputs []goodcaseJudgeInput, review bool) (*goodcaseJudgeOutput, error) {
 	payload, err := json.Marshal(map[string]any{"cases": inputs})
 	if err != nil {
 		return nil, err
 	}
 	systemText := "你是严格的批量评测裁判。逐条比较模型回答与优质参考答案在事实、约束和输出格式上的一致性，不得遗漏、合并或改写 case_id。只返回 JSON：{\"scores\":[{\"case_id\":\"原值\",\"before_score\":0到1之间的数字或省略,\"after_score\":0到1之间的数字,\"reason\":\"简短原因\"}]}。仅当输入含 baseline_actual 时返回 before_score。"
+	if review {
+		systemText += " 这是对可疑全满分结果的独立复核。不得沿用先前结论；重点检查拒答、空输出、JSON/字段缺失、类型变化和格式协议破坏。只有与参考答案在事实和协议上均完全一致时才可给 1 分。"
+	}
 	userText := string(payload)
 	modelID, temperature := task.OptimizerModelID, 0.0
 	maxTokens := int32(512 + len(inputs)*160)
@@ -692,6 +722,188 @@ func (a *OptimizeApplication) callGoodcaseJudgeBatch(ctx context.Context, task *
 		return nil, fmt.Errorf("parse goodcase judge output: %w", err)
 	}
 	return &judged, nil
+}
+
+func guardGoodcaseJudgeOutput(inputs []goodcaseJudgeInput, judged *goodcaseJudgeOutput) {
+	if judged == nil {
+		return
+	}
+	byID := make(map[string]goodcaseJudgeInput, len(inputs))
+	for _, input := range inputs {
+		byID[input.CaseID] = input
+	}
+	for index := range judged.Scores {
+		score := &judged.Scores[index]
+		input, ok := byID[score.CaseID]
+		if !ok {
+			continue
+		}
+		if input.BaselineActual != nil {
+			if err := validateGoodcaseAnswer(input.ReferenceOutput, *input.BaselineActual); err != nil {
+				zero := 0.0
+				score.BeforeScore = &zero
+				score.Reason = appendJudgeReason(score.Reason, "baseline protocol guard: "+err.Error())
+			}
+		}
+		if err := validateGoodcaseAnswer(input.ReferenceOutput, input.CandidateActual); err != nil {
+			zero := 0.0
+			score.AfterScore = &zero
+			score.Reason = appendJudgeReason(score.Reason, "candidate protocol guard: "+err.Error())
+		}
+	}
+}
+
+func validateGoodcaseAnswer(reference, actual string) error {
+	actual = strings.TrimSpace(actual)
+	if actual == "" {
+		return errors.New("empty output")
+	}
+	if isObviousRefusal(actual) && !isObviousRefusal(reference) {
+		return errors.New("obvious refusal")
+	}
+	var expected any
+	if err := json.Unmarshal([]byte(strings.TrimSpace(reference)), &expected); err != nil {
+		return nil
+	}
+	switch expected.(type) {
+	case map[string]any, []any:
+	default:
+		return nil
+	}
+	var candidate any
+	if err := json.Unmarshal([]byte(actual), &candidate); err != nil {
+		return errors.New("expected structured JSON output")
+	}
+	return validateReferenceJSONShape(expected, candidate, "$")
+}
+
+func validateReferenceJSONShape(expected, candidate any, path string) error {
+	switch value := expected.(type) {
+	case map[string]any:
+		got, ok := candidate.(map[string]any)
+		if !ok {
+			return fmt.Errorf("%s must be an object", path)
+		}
+		for key, child := range value {
+			actual, exists := got[key]
+			if !exists {
+				return fmt.Errorf("%s.%s is required", path, key)
+			}
+			if err := validateReferenceJSONShape(child, actual, path+"."+key); err != nil {
+				return err
+			}
+		}
+	case []any:
+		got, ok := candidate.([]any)
+		if !ok {
+			return fmt.Errorf("%s must be an array", path)
+		}
+		if len(value) > 0 {
+			for index, child := range got {
+				if err := validateReferenceJSONShape(value[0], child, fmt.Sprintf("%s[%d]", path, index)); err != nil {
+					return err
+				}
+			}
+		}
+	case string:
+		if candidate != nil {
+			if _, ok := candidate.(string); !ok {
+				return fmt.Errorf("%s must be a string", path)
+			}
+		}
+	case float64:
+		if candidate != nil {
+			if _, ok := candidate.(float64); !ok {
+				return fmt.Errorf("%s must be a number", path)
+			}
+		}
+	case bool:
+		if candidate != nil {
+			if _, ok := candidate.(bool); !ok {
+				return fmt.Errorf("%s must be a boolean", path)
+			}
+		}
+	}
+	return nil
+}
+
+func isObviousRefusal(output string) bool {
+	normalized := strings.ToLower(strings.TrimSpace(output))
+	normalized = strings.TrimPrefix(normalized, "as an ai, ")
+	for _, phrase := range []string{
+		"i cannot assist", "i can't assist", "i am unable to", "i'm unable to",
+		"i’m unable to", "i'm sorry, but", "i’m sorry, but",
+		"cannot comply", "can't comply", "unable to comply",
+		"抱歉，我无法", "抱歉，无法", "抱歉，我不能", "我无法帮助", "我不能帮助", "无法协助此请求",
+	} {
+		if strings.HasPrefix(normalized, phrase) {
+			return true
+		}
+	}
+	return false
+}
+
+func goodcaseJudgeOutputNeedsReview(judged *goodcaseJudgeOutput) bool {
+	if judged == nil || len(judged.Scores) == 0 {
+		return false
+	}
+	for _, score := range judged.Scores {
+		if score.AfterScore == nil || *score.AfterScore < 0.999 {
+			return false
+		}
+	}
+	return true
+}
+
+func mergeGoodcaseJudgeReview(first, review *goodcaseJudgeOutput) error {
+	if first == nil || review == nil {
+		return errors.New("goodcase judge review output is nil")
+	}
+	byID := make(map[string]goodcaseJudgeScore, len(review.Scores))
+	for _, score := range review.Scores {
+		if _, exists := byID[score.CaseID]; exists {
+			return fmt.Errorf("duplicate review case_id %q", score.CaseID)
+		}
+		byID[score.CaseID] = score
+	}
+	for index := range first.Scores {
+		score := &first.Scores[index]
+		rechecked, ok := byID[score.CaseID]
+		if !ok || rechecked.AfterScore == nil {
+			return fmt.Errorf("review missing case_id %q", score.CaseID)
+		}
+		score.AfterScore = lowerScore(score.AfterScore, rechecked.AfterScore)
+		if score.BeforeScore != nil || rechecked.BeforeScore != nil {
+			if score.BeforeScore == nil || rechecked.BeforeScore == nil {
+				return fmt.Errorf("review before_score mismatch for case_id %q", score.CaseID)
+			}
+			score.BeforeScore = lowerScore(score.BeforeScore, rechecked.BeforeScore)
+		}
+		score.Reason = appendJudgeReason(score.Reason, "review: "+rechecked.Reason)
+	}
+	if len(byID) != len(first.Scores) {
+		return fmt.Errorf("review returned %d cases, expected %d", len(byID), len(first.Scores))
+	}
+	return nil
+}
+
+func lowerScore(left, right *float64) *float64 {
+	value := *left
+	if *right < value {
+		value = *right
+	}
+	return &value
+}
+
+func appendJudgeReason(current, addition string) string {
+	addition = strings.TrimSpace(addition)
+	if addition == "" {
+		return current
+	}
+	if strings.TrimSpace(current) == "" {
+		return addition
+	}
+	return current + "; " + addition
 }
 
 func applyGoodcaseJudgeOutput(results []candidateCaseResult, judged *goodcaseJudgeOutput) error {
@@ -781,6 +993,64 @@ func (a *OptimizeApplication) rerunOriginalEvaluators(ctx context.Context, task 
 		}
 	}
 	return before, after, names, nil
+}
+
+func (a *OptimizeApplication) populateEvaluatorNames(ctx context.Context, workspaceID int64, results []candidateCaseResult) {
+	ids := make([]int64, 0)
+	seen := make(map[int64]struct{})
+	for _, result := range results {
+		for evaluatorID := range result.beforeScores {
+			if _, ok := seen[evaluatorID]; !ok {
+				seen[evaluatorID] = struct{}{}
+				ids = append(ids, evaluatorID)
+			}
+		}
+		for evaluatorID := range result.afterScores {
+			if _, ok := seen[evaluatorID]; !ok {
+				seen[evaluatorID] = struct{}{}
+				ids = append(ids, evaluatorID)
+			}
+		}
+	}
+	var evaluators []*evaluatordto.Evaluator
+	if a.evaluators != nil && len(ids) > 0 {
+		resp, err := a.evaluators.BatchGetEvaluatorVersions(ctx, &evaluatorservice.BatchGetEvaluatorVersionsRequest{
+			WorkspaceID: workspaceID, EvaluatorVersionIds: ids,
+		})
+		if err == nil && resp != nil {
+			evaluators = resp.GetEvaluators()
+		}
+	}
+	fillEvaluatorNames(results, evaluators)
+}
+
+func fillEvaluatorNames(results []candidateCaseResult, evaluators []*evaluatordto.Evaluator) {
+	names := make(map[int64]string, len(evaluators))
+	for _, evaluator := range evaluators {
+		if evaluator == nil || evaluator.GetCurrentVersion() == nil || evaluator.GetCurrentVersion().GetID() <= 0 || strings.TrimSpace(evaluator.GetName()) == "" {
+			continue
+		}
+		names[evaluator.GetCurrentVersion().GetID()] = evaluator.GetName()
+	}
+	for index := range results {
+		if results[index].evaluatorNames == nil {
+			results[index].evaluatorNames = make(map[int64]string)
+		}
+		for evaluatorID := range results[index].beforeScores {
+			name := names[evaluatorID]
+			if name == "" {
+				name = fmt.Sprintf("Evaluator %d", evaluatorID)
+			}
+			results[index].evaluatorNames[evaluatorID] = name
+		}
+		for evaluatorID := range results[index].afterScores {
+			name := names[evaluatorID]
+			if name == "" {
+				name = fmt.Sprintf("Evaluator %d", evaluatorID)
+			}
+			results[index].evaluatorNames[evaluatorID] = name
+		}
+	}
 }
 
 func cloneEvaluatorInput(input *evaluatordto.EvaluatorInputData) (*evaluatordto.EvaluatorInputData, error) {

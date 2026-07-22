@@ -10,6 +10,7 @@ import (
 	"github.com/coze-dev/coze-loop/backend/infra/middleware/session"
 	evaluatorcommon "github.com/coze-dev/coze-loop/backend/kitex_gen/coze/loop/evaluation/domain/common"
 	evalsetdto "github.com/coze-dev/coze-loop/backend/kitex_gen/coze/loop/evaluation/domain/eval_set"
+	evaluatordto "github.com/coze-dev/coze-loop/backend/kitex_gen/coze/loop/evaluation/domain/evaluator"
 	"github.com/coze-dev/coze-loop/backend/modules/evaluation/domain/entity"
 )
 
@@ -19,6 +20,23 @@ func TestPolicyForMode(t *testing.T) {
 	}
 	if got := policyForMode(0.8); got.rounds != 3 || got.candidates != 3 || got.maxModelCalls != 96 {
 		t.Fatalf("unexpected quality policy: %#v", got)
+	}
+}
+
+func TestGoodcaseNoGainUsesDedicatedStatus(t *testing.T) {
+	policy := policyForMode(0.5)
+	if policy.minGain != 0.001 {
+		t.Fatalf("unexpected minGain: %v", policy.minGain)
+	}
+	// Contract: eval-set tasks with non-positive validation gain complete as
+	// no_gain instead of failed so the UI can still open the report.
+	status := entity.OptimizeTaskStatusSucceeded
+	bestScore := -0.1
+	if bestScore <= policy.minGain {
+		status = entity.OptimizeTaskStatusNoGain
+	}
+	if status != entity.OptimizeTaskStatusNoGain {
+		t.Fatalf("status = %q, want no_gain", status)
 	}
 }
 
@@ -100,6 +118,122 @@ func TestApplyGoodcaseJudgeOutput(t *testing.T) {
 	missing := []candidateCaseResult{{caseID: "a"}, {caseID: "b"}}
 	if err := applyGoodcaseJudgeOutput(missing, &goodcaseJudgeOutput{Scores: []goodcaseJudgeScore{{CaseID: "a", AfterScore: &afterA}}}); err == nil {
 		t.Fatal("expected missing case error")
+	}
+}
+
+func TestGuardGoodcaseJudgeOutputRejectsProtocolBreakAndRefusal(t *testing.T) {
+	perfect := 1.0
+	inputs := []goodcaseJudgeInput{
+		{
+			CaseID:          "missing-json-field",
+			ReferenceOutput: `{"defects":[],"recommended_next_action":"manual_review"}`,
+			BaselineActual:  testPtr(`{"defects":[],"recommended_next_action":"manual_review"}`),
+			CandidateActual: `{"defects":[]}`,
+		},
+		{
+			CaseID:          "refusal",
+			ReferenceOutput: "The tire has a sidewall crack.",
+			CandidateActual: "I cannot assist with this request.",
+		},
+	}
+	judged := &goodcaseJudgeOutput{Scores: []goodcaseJudgeScore{
+		{CaseID: "missing-json-field", BeforeScore: &perfect, AfterScore: &perfect},
+		{CaseID: "refusal", AfterScore: &perfect},
+	}}
+
+	guardGoodcaseJudgeOutput(inputs, judged)
+
+	if *judged.Scores[0].BeforeScore != perfect {
+		t.Fatalf("valid baseline score changed: %#v", judged.Scores[0])
+	}
+	if *judged.Scores[0].AfterScore != 0 || *judged.Scores[1].AfterScore != 0 {
+		t.Fatalf("hard failures must score zero: %#v", judged.Scores)
+	}
+	if judged.Scores[0].Reason == "" || judged.Scores[1].Reason == "" {
+		t.Fatalf("hard failure reasons must be recorded: %#v", judged.Scores)
+	}
+}
+
+func TestValidateGoodcaseAnswerRequiresStandaloneJSON(t *testing.T) {
+	reference := `{"defects":[{"type":"crack"}],"image_quality":"ok"}`
+	for _, actual := range []string{
+		"```json\n" + reference + "\n```",
+		reference + "\nThis is the result.",
+		`{"defects":[{"type":1}],"image_quality":"ok"}`,
+	} {
+		if err := validateGoodcaseAnswer(reference, actual); err == nil {
+			t.Fatalf("expected protocol failure for %q", actual)
+		}
+	}
+	if err := validateGoodcaseAnswer(reference, `{"defects":[{"type":"crack","severity":"high"}],"image_quality":"ok","extra":true}`); err != nil {
+		t.Fatalf("extra JSON fields should be allowed: %v", err)
+	}
+}
+
+func TestIsObviousRefusalAvoidsDomainConclusionFalsePositive(t *testing.T) {
+	if !isObviousRefusal("抱歉，我不能协助此请求。") {
+		t.Fatal("expected explicit Chinese refusal")
+	}
+	if isObviousRefusal(`{"image_quality":"blurry","conclusion":"图像模糊，无法辨认裂纹，无法提供确定结论"}`) {
+		t.Fatal("domain uncertainty must not be treated as a refusal")
+	}
+}
+
+func TestGoodcaseJudgeOutputNeedsReviewOnlyForAllPerfect(t *testing.T) {
+	perfect, lower := 1.0, 0.9
+	if !goodcaseJudgeOutputNeedsReview(&goodcaseJudgeOutput{Scores: []goodcaseJudgeScore{
+		{CaseID: "a", AfterScore: &perfect},
+		{CaseID: "b", AfterScore: &perfect},
+	}}) {
+		t.Fatal("all-perfect batch must be reviewed")
+	}
+	if goodcaseJudgeOutputNeedsReview(&goodcaseJudgeOutput{Scores: []goodcaseJudgeScore{
+		{CaseID: "a", AfterScore: &perfect},
+		{CaseID: "b", AfterScore: &lower},
+	}}) {
+		t.Fatal("mixed scores must not trigger all-perfect review")
+	}
+}
+
+func TestMergeGoodcaseJudgeReviewUsesConservativeScores(t *testing.T) {
+	firstBefore, firstAfter := 1.0, 1.0
+	reviewBefore, reviewAfter := 0.8, 0.6
+	first := &goodcaseJudgeOutput{Scores: []goodcaseJudgeScore{{
+		CaseID: "a", BeforeScore: &firstBefore, AfterScore: &firstAfter, Reason: "first",
+	}}}
+	review := &goodcaseJudgeOutput{Scores: []goodcaseJudgeScore{{
+		CaseID: "a", BeforeScore: &reviewBefore, AfterScore: &reviewAfter, Reason: "review",
+	}}}
+
+	if err := mergeGoodcaseJudgeReview(first, review); err != nil {
+		t.Fatal(err)
+	}
+	if *first.Scores[0].BeforeScore != reviewBefore || *first.Scores[0].AfterScore != reviewAfter {
+		t.Fatalf("review must lower suspicious scores: %#v", first.Scores[0])
+	}
+	if first.Scores[0].Reason != "first; review: review" {
+		t.Fatalf("review reason not preserved: %q", first.Scores[0].Reason)
+	}
+}
+
+func TestFillEvaluatorNamesUsesVersionMetadata(t *testing.T) {
+	results := []candidateCaseResult{{
+		beforeScores:   map[int64]float64{101: 0.4},
+		afterScores:    map[int64]float64{101: 0.8, 102: 0.7},
+		evaluatorNames: map[int64]string{},
+	}}
+	evaluators := []*evaluatordto.Evaluator{{
+		Name:           testPtr("缺陷准确率"),
+		CurrentVersion: &evaluatordto.EvaluatorVersion{ID: testPtr(int64(101))},
+	}}
+
+	fillEvaluatorNames(results, evaluators)
+
+	if got := results[0].evaluatorNames[101]; got != "缺陷准确率" {
+		t.Fatalf("evaluator name = %q", got)
+	}
+	if got := results[0].evaluatorNames[102]; got != "Evaluator 102" {
+		t.Fatalf("fallback evaluator name = %q", got)
 	}
 }
 

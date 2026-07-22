@@ -13,6 +13,7 @@ export enum OptimizeTaskStatus {
   OptimizeTaskStatusQueued = "queued",
   OptimizeTaskStatusRunning = "running",
   OptimizeTaskStatusSucceeded = "succeeded",
+  OptimizeTaskStatusNoGain = "no_gain",
   OptimizeTaskStatusFailed = "failed",
   OptimizeTaskStatusCancelled = "cancelled",
 }

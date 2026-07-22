@@ -145,9 +145,12 @@ func (r *OptimizeTaskRepo) UpdateProgress(ctx context.Context, taskID int64, lea
 		Update("progress", progress).Error
 }
 
-func (r *OptimizeTaskRepo) Complete(ctx context.Context, taskID int64, leaseToken, resultJSON string) error {
+func (r *OptimizeTaskRepo) Complete(ctx context.Context, taskID int64, leaseToken, resultJSON, status string) error {
+	if status == "" {
+		status = entity.OptimizeTaskStatusSucceeded
+	}
 	return r.db.NewSession(ctx).Model(&optimizeTaskPO{}).Where("id = ? AND status = ? AND lease_token = ?", taskID, entity.OptimizeTaskStatusRunning, leaseToken).
-		Updates(map[string]any{"status": entity.OptimizeTaskStatusSucceeded, "progress": 100, "result": resultJSON, "error_msg": "", "lease_token": "", "lease_expires_at": nil}).Error
+		Updates(map[string]any{"status": status, "progress": 100, "result": resultJSON, "error_msg": "", "lease_token": "", "lease_expires_at": nil}).Error
 }
 
 func (r *OptimizeTaskRepo) Fail(ctx context.Context, taskID int64, leaseToken, errMsg string) error {

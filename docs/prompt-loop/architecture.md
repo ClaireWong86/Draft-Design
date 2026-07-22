@@ -18,7 +18,7 @@ flowchart TB
     subgraph PromptLoop["Prompt Loop（本仓库）"]
         Web["Web UI :8082"]
         OpenAPI["OpenAPI :8888"]
-        Backend["Go 后端\nPrompt / Evaluate / Observability"]
+        Backend["Go 后端\nPrompt / Evaluate / Observability / Optimize"]
         Data["MySQL · Redis · ClickHouse · MinIO · RocketMQ"]
         Web --> Backend
         OpenAPI --> Backend
@@ -55,7 +55,7 @@ flowchart TB
 
 | 组件 | 职责 |
 |------|------|
-| **Prompt Loop Web** | Prompt 编写调试、评测实验、Trace 观测、PAT 管理 |
+| **Prompt Loop Web** | Prompt 编排、Trace 观测、评测实验、智能优化、PAT 管理 |
 | **Prompt Loop OpenAPI** | SDK / 外部服务接入（Trace、Prompt、评测 OpenAPI） |
 | **tire-ai-diagnosis API** | 轮胎拍照诊断编排：上传 → 多轮位 VLM → 规则引擎 → 报告 |
 | **VLM 提供方** | 实际多模态推理；Prompt Loop 平台内模型用于 Playground / PTaaS |
@@ -116,7 +116,9 @@ flowchart LR
     subgraph BE["backend/ Go DDD"]
         API["api/ Hertz handlers"]
         Mod["modules/\nfoundation · prompt · evaluation · observability · data"]
+        Optimize["OptimizeTask API + Worker\nMySQL lease · baseline · judge · validation"]
         API --> Mod
+        Mod --> Optimize
     end
 
     subgraph IDL["idl/thrift"]
@@ -128,7 +130,7 @@ flowchart LR
     IDL -.-> BE
 
     subgraph LocalScripts["scripts/local/"]
-        DC["docker-compose-local.sh"]
+        DC["docker-compose-local.sh\nPodman compose-compatible wrapper"]
         Health["model-health-check.sh"]
         Seed["seed-tire-prompt.sh"]
         Tunnel["cloudflare-tunnel.sh"]
@@ -138,6 +140,23 @@ flowchart LR
 ```
 
 品牌改造主要落在 **frontend** 的 UI 文案、Logo、登录页与部分 i18n；**npm 包名**（`@cozeloop/*`、`@coze-arch/*`）与 **CSS 变量**（`--coze-*`）仍与上游一致，避免大规模依赖重命名。
+
+### 3.1 智能优化闭环
+
+```mermaid
+flowchart LR
+    Source["评测实验 / Goodcase 评测集"] --> Create["创建 OptimizeTask\n冻结来源、Prompt、模型和映射快照"]
+    Create --> Lease["MySQL lease Worker"]
+    Lease --> Baseline["原 Prompt baseline\nGoodcase 每 case 一次"]
+    Baseline --> Candidate["诊断与多候选改写"]
+    Candidate --> Execute["变量渲染 + 图文 parts 保真执行"]
+    Execute --> Judge["实验：原 evaluator\nGoodcase：同一 LLM Judge"]
+    Judge --> Validate["固定验证集按 after-before 增益选优"]
+    Validate -->|"增益 > 0.001"| Report["succeeded：报告 + 可采纳"]
+    Validate -->|"无提升"| NoGain["no_gain：报告可看、不可采纳"]
+```
+
+任务事实源是 MySQL；lease token、过期时间和重试次数保证 Worker 重启与多实例竞争时不会重复完成同一任务。Goodcase 裁判硬保护与 `no_gain` 终态已落地；仍不能把单次 LLM 高分直接视为自动发布依据。下一优先是 P1 UI（实验过滤、报告回跳、Guard/变量校验）。
 
 ---
 
@@ -150,7 +169,7 @@ flowchart TB
         Tmp["/private/tmp/coze-loop-docker-compose\n运行时 compose + model_config"]
         Scripts["scripts/local/*.sh"]
 
-        subgraph Docker["Docker Compose"]
+        subgraph Podman["Podman machine: podman-loop-dev"]
             Nginx["nginx :8082 → Web"]
             App["coze-loop-app :8888 OpenAPI"]
             MySQL["mysql"]
@@ -166,7 +185,7 @@ flowchart TB
 
         Scripts --> Tmp
         Env --> Scripts
-        Tmp --> Docker
+        Tmp --> Podman
     end
 
     DevFE -.->|"开发时替代 8082 静态资源"| Nginx
@@ -175,7 +194,7 @@ flowchart TB
 
 | 端口 | 服务 | 说明 |
 |------|------|------|
-| **8082** | Prompt Loop Web（Docker nginx） | 预构建镜像，UI 改动需 dev 8090 或 rebuild |
+| **8082** | Prompt Loop Web（Podman nginx） | 预构建镜像，UI 改动需 dev 8090 或 rebuild |
 | **8888** | Prompt Loop OpenAPI | Trace ingest、SDK 调用 |
 | **8090** | 前端 dev server | `cd frontend/apps/cozeloop && npm run dev` |
 | **8000** | tire-ai-diagnosis API | 独立仓库，本地联调 |
@@ -190,7 +209,7 @@ flowchart LR
     Refresh["refresh-config"]
     Health["model-health-check.sh"]
     Apply["apply-model-health.py"]
-    YAML["model_config.yaml\n(Docker 卷)"]
+    YAML["model_config.yaml\n(Podman 命名卷)"]
     App["coze-loop-app"]
 
     EnvLocal --> Refresh
@@ -205,7 +224,7 @@ flowchart LR
 | DeepSeek | `DEEPSEEK_API_KEY` | 推荐默认可用 |
 | OpenAI | `OPENAI_API_KEY` | 易遇 quota 超限 |
 | Ark | `ARK_API_KEY` | 需账户余额 |
-| JoyBuild | `JOYBUILD_API_KEY` | 待接入 API Key |
+| JoyBuild | `JOYBUILD_API_KEY` | 已接入，并完成 VLM 真图验收 |
 
 健康检查失败的模型会被标记 `prompt_debug.unavailable: true`，避免 Playground 默认可选已失效模型。
 

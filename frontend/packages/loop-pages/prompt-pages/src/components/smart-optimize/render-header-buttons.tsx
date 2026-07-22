@@ -2,6 +2,8 @@
 // SPDX-License-Identifier: Apache-2.0
 import { type ReactNode } from 'react';
 
+import { Guard, GuardPoint } from '@cozeloop/guard';
+
 import { type OptimizeSourceType } from './types';
 import { SmartOptimizeHeaderDropdown } from './header-dropdown';
 
@@ -20,7 +22,9 @@ export function renderSmartOptimizeHeaderButtons(
     <>
       {compare}
       {versionList}
-      <SmartOptimizeHeaderDropdown onOpenWizard={ctx.onOpenWizard} />
+      <Guard point={GuardPoint['pe.prompt.smart_optimize']} realtime>
+        <SmartOptimizeHeaderDropdown onOpenWizard={ctx.onOpenWizard} />
+      </Guard>
       {submit}
       {rest}
     </>
