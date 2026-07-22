@@ -75,10 +75,12 @@ export const UploadButton = forwardRef<UploadButtonRef, UploadBtnProps>(
         reader.readAsDataURL(fileInstance as Blob);
         reader.onload = async () => {
           const base64Url = reader.result as string;
+          // Keep blob/data URLs only in thumb_url for UI preview. Never put blob:
+          // into url — the backend reconstructs relative URLs against MinIO host.
           const partInfo =
             currentFileType === 'image'
-              ? { image_url: { url: file.url, thumb_url: base64Url } }
-              : { video_url: { url: file.url, thumb_url: base64Url } };
+              ? { image_url: { url: '', thumb_url: base64Url } }
+              : { video_url: { url: '', thumb_url: base64Url } };
           const part: ContentPartLoop = {
             type:
               currentFileType === 'image'
@@ -104,14 +106,14 @@ export const UploadButton = forwardRef<UploadButtonRef, UploadBtnProps>(
               currentFileType === 'image'
                 ? {
                     image_url: {
-                      url: file.url,
+                      url: '',
                       uri: res,
                       thumb_url: base64Url,
                     },
                   }
                 : {
                     video_url: {
-                      url: file.url,
+                      url: '',
                       uri: res,
                       thumb_url: base64Url,
                     },
@@ -155,7 +157,9 @@ export const UploadButton = forwardRef<UploadButtonRef, UploadBtnProps>(
           multiple
           fileList={fileParts.map(it => ({
             uid: it.uid || '',
-            url: it.image_url?.url,
+            url:
+              (it.image_url as { thumb_url?: string } | undefined)?.thumb_url ||
+              it.image_url?.url,
             status: it.status || 'success',
             name: it.uid || '',
             size: '0',

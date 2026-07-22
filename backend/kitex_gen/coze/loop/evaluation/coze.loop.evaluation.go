@@ -9,6 +9,7 @@ import (
 	"github.com/coze-dev/coze-loop/backend/kitex_gen/coze/loop/evaluation/evaluator"
 	"github.com/coze-dev/coze-loop/backend/kitex_gen/coze/loop/evaluation/expt"
 	"github.com/coze-dev/coze-loop/backend/kitex_gen/coze/loop/evaluation/openapi"
+	"github.com/coze-dev/coze-loop/backend/kitex_gen/coze/loop/evaluation/optimize"
 	"github.com/coze-dev/coze-loop/backend/kitex_gen/coze/loop/evaluation/spi"
 	"github.com/coze-dev/coze-loop/backend/kitex_gen/coze/loop/trajectory"
 )
@@ -149,6 +150,32 @@ func NewEvalOpenAPIServiceClient(c thrift.TClient) *EvalOpenAPIServiceClient {
 	}
 }
 
+type OptimizeService interface {
+	optimize.OptimizeService
+}
+
+type OptimizeServiceClient struct {
+	*optimize.OptimizeServiceClient
+}
+
+func NewOptimizeServiceClientFactory(t thrift.TTransport, f thrift.TProtocolFactory) *OptimizeServiceClient {
+	return &OptimizeServiceClient{
+		OptimizeServiceClient: optimize.NewOptimizeServiceClientFactory(t, f),
+	}
+}
+
+func NewOptimizeServiceClientProtocol(t thrift.TTransport, iprot thrift.TProtocol, oprot thrift.TProtocol) *OptimizeServiceClient {
+	return &OptimizeServiceClient{
+		OptimizeServiceClient: optimize.NewOptimizeServiceClientProtocol(t, iprot, oprot),
+	}
+}
+
+func NewOptimizeServiceClient(c thrift.TClient) *OptimizeServiceClient {
+	return &OptimizeServiceClient{
+		OptimizeServiceClient: optimize.NewOptimizeServiceClient(c),
+	}
+}
+
 type EvalSPIService interface {
 	spi.EvaluationSPIService
 }
@@ -217,6 +244,15 @@ type EvalOpenAPIServiceProcessor struct {
 
 func NewEvalOpenAPIServiceProcessor(handler EvalOpenAPIService) *EvalOpenAPIServiceProcessor {
 	self := &EvalOpenAPIServiceProcessor{openapi.NewEvaluationOpenAPIServiceProcessor(handler)}
+	return self
+}
+
+type OptimizeServiceProcessor struct {
+	*optimize.OptimizeServiceProcessor
+}
+
+func NewOptimizeServiceProcessor(handler OptimizeService) *OptimizeServiceProcessor {
+	self := &OptimizeServiceProcessor{optimize.NewOptimizeServiceProcessor(handler)}
 	return self
 }
 

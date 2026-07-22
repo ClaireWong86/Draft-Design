@@ -23,6 +23,7 @@ const (
 	ExptAnalysisEventRMQKey         = "expt_analysis_event_rmq"
 	ExptLifecycleEventRMQKey        = "expt_lifecycle_event_rmq"
 	ExptWebhookNotifyEventRMQKey    = "expt_webhook_notify_event_rmq" // Deprecated: 已复用 lifecycle topic + TagWebhookRetry
+	OptimizeTaskWakeEventRMQKey     = "optimize_task_wake_rmq"
 
 	// Tag 常量，用于在同一 Topic 内区分消息类型
 	TagWebhookRetry = "webhook_retry"

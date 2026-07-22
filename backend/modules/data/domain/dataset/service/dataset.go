@@ -174,6 +174,26 @@ func (s *DatasetServiceImpl) buildNewDataset(d *entity.Dataset) {
 	d.Status = gcond.If(d.Status == "", entity.DatasetStatusAvailable, d.Status)
 	d.Visibility = gcond.If(d.Visibility == "", entity.DatasetVisibilitySpace, d.Visibility)
 	d.SecurityLevel = gcond.If(d.SecurityLevel == "", entity.SecurityLevelL2, d.SecurityLevel)
-	d.Features = gcond.If(d.Features == nil, s.featConfig().GetFeatureByCategory(d.Category), d.Features)
+	defaultFeat := s.featConfig().GetFeatureByCategory(d.Category)
+	if d.Features == nil {
+		d.Features = defaultFeat
+	} else {
+		d.Features = mergeDatasetFeatures(d.Features, defaultFeat)
+	}
 	d.Spec = gcond.If(d.Spec == nil, s.specConfig().GetSpecByCategory(d.Category), d.Spec)
+}
+
+// mergeDatasetFeatures 将请求显式传入的 feature 与分类默认值合并，避免只传 edit_schema 时丢失 multi_modal 等默认能力。
+func mergeDatasetFeatures(explicit, defaults *entity.DatasetFeatures) *entity.DatasetFeatures {
+	if explicit == nil {
+		return defaults
+	}
+	if defaults == nil {
+		return explicit
+	}
+	return &entity.DatasetFeatures{
+		EditSchema:   explicit.EditSchema || defaults.EditSchema,
+		RepeatedData: explicit.RepeatedData || defaults.RepeatedData,
+		MultiModal:   explicit.MultiModal || defaults.MultiModal,
+	}
 }

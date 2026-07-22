@@ -2,10 +2,6 @@
 // SPDX-License-Identifier: Apache-2.0
 import { useRequest } from 'ahooks';
 import { I18n } from '@cozeloop/i18n-adapter';
-import {
-  useOpenWindow,
-  useResourcePageJump,
-} from '@cozeloop/biz-hooks-adapter';
 import { type tag } from '@cozeloop/api-schema/data';
 import { StoneEvaluationApi } from '@cozeloop/api-schema';
 import { Modal, Space, Tooltip, Typography } from '@coze-arch/coze-design';
@@ -24,8 +20,6 @@ export function AnnotateItemCard({
   experimentID,
   onDelete,
 }: Props) {
-  const { getTagDetailURL } = useResourcePageJump();
-  const { openBlank } = useOpenWindow();
   const removeTag = useRequest(
     (tagID: string) =>
       StoneEvaluationApi.DeleteAnnotationTag({
@@ -43,16 +37,6 @@ export function AnnotateItemCard({
         data={data}
         actions={
           <Space spacing={20} className="ml-6">
-            <Tooltip content={I18n.t('view_detail')} theme="dark">
-              <Typography.Text
-                link
-                onClick={() => {
-                  openBlank(getTagDetailURL(data.tag_key_id || ''));
-                }}
-              >
-                {I18n.t('detail')}
-              </Typography.Text>
-            </Tooltip>
             <Tooltip content={I18n.t('delete_tag')} theme="dark">
               <Typography.Text
                 link

@@ -169,6 +169,8 @@ export interface BasePromptDevelopProps {
   submitConfig?: {
     hideVersionLabel?: boolean;
   };
+  /** Increment to open the standard submit-version flow from an external tab. */
+  submitRequestKey?: number;
   hideSnippet?: boolean;
   wikiConfig?: {};
 }

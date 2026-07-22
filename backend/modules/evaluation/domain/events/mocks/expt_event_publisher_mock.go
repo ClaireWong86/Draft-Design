@@ -167,3 +167,17 @@ func (mr *MockExptEventPublisherMockRecorder) PublishExptTurnResultFilterEvent(c
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "PublishExptTurnResultFilterEvent", reflect.TypeOf((*MockExptEventPublisher)(nil).PublishExptTurnResultFilterEvent), ctx, event, duration)
 }
+
+// PublishOptimizeTaskWakeEvent mocks base method.
+func (m *MockExptEventPublisher) PublishOptimizeTaskWakeEvent(ctx context.Context, event *entity.OptimizeTaskWakeEvent, duration *time.Duration) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "PublishOptimizeTaskWakeEvent", ctx, event, duration)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// PublishOptimizeTaskWakeEvent indicates an expected call of PublishOptimizeTaskWakeEvent.
+func (mr *MockExptEventPublisherMockRecorder) PublishOptimizeTaskWakeEvent(ctx, event, duration any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "PublishOptimizeTaskWakeEvent", reflect.TypeOf((*MockExptEventPublisher)(nil).PublishOptimizeTaskWakeEvent), ctx, event, duration)
+}

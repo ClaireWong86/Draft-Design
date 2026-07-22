@@ -157,6 +157,9 @@ func (u UserRepoImpl) GetUserByEmail(ctx context.Context, email string) (*entity
 		return nil, errorx.New("UserRepoImpl.GetUserByEmail invalid param")
 	}
 	userPO, err := u.userDao.FindByEmail(ctx, email)
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return nil, errorx.NewByCode(errno.UserNotExistCode)
+	}
 	if err != nil {
 		return nil, errorx.WrapByCode(err, errno.CommonMySqlErrorCode, errorx.WithExtraMsg("userDao.GetUserByEmail error"))
 	}

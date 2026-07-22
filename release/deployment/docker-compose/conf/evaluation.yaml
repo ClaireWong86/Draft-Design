@@ -58,6 +58,17 @@ expt_lifecycle_event_rmq:
   consumer_group: 'expt_lifecycle_event_cg'
   producer_group: 'expt_lifecycle_event_pg'
   consume_timeout: 1m
+# Optional multi-instance OptimizeTask wake. Disabled by default: local enqueue +
+# MySQL lease/resume remain authoritative. Flip both flags and create the topic
+# when horizontal wake is needed.
+optimize_task_wake_rmq:
+  addr: 'cozeloop-namesrv:9876'
+  topic: 'evaluation_optimize_task_wake_event'
+  consumer_group: 'optimize_task_wake_cg'
+  producer_group: 'optimize_task_wake_pg'
+  consume_timeout: 1m
+  disable_produce: true
+  disable_consume: true
 expt_webhook_notify_event_rmq:
   addr: 'cozeloop-namesrv:9876'
   topic: 'expt_webhook_notify_event'

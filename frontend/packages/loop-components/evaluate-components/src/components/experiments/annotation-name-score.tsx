@@ -1,18 +1,11 @@
 // Copyright (c) 2025 coze-dev Authors
 // SPDX-License-Identifier: Apache-2.0
-import classNames from 'classnames';
 import { TypographyText } from '@cozeloop/shared-components';
-import { I18n } from '@cozeloop/i18n-adapter';
-import { JumpIconButton } from '@cozeloop/components';
-import {
-  useResourcePageJump,
-  useOpenWindow,
-} from '@cozeloop/biz-hooks-adapter';
 import {
   type ColumnAnnotation,
   type AnnotateRecord,
 } from '@cozeloop/api-schema/evaluation';
-import { Divider, Popover, Tooltip } from '@coze-arch/coze-design';
+import { Divider, Popover } from '@coze-arch/coze-design';
 
 import { TagRender } from './tag/tag-render';
 
@@ -20,9 +13,6 @@ interface NameScoreTagProps {
   name?: string;
   annotation?: ColumnAnnotation;
   annotateRecord?: AnnotateRecord;
-  tagID?: Int64;
-  enableLinkJump?: boolean;
-  defaultShowAction?: boolean;
   border?: boolean;
 }
 
@@ -30,14 +20,8 @@ export function AnnotationNameScoreTag({
   name,
   annotation,
   annotateRecord,
-  tagID,
-  enableLinkJump,
-  defaultShowAction = false,
   border = true,
 }: NameScoreTagProps) {
-  const { getTagDetailURL } = useResourcePageJump();
-  const { openBlank } = useOpenWindow();
-
   const borderClass = border
     ? 'border border-solid border-[var(--coz-stroke-primary)] cursor-pointer hover:bg-[var(--coz-mg-primary)] hover:border-[var(--coz-stroke-plus)]'
     : '';
@@ -56,20 +40,6 @@ export function AnnotationNameScoreTag({
           />
         ) : null}
       </div>
-      <div className={classNames('flex items-center', 'ml-1')}>
-        {enableLinkJump ? (
-          <Tooltip theme="dark" content={I18n.t('view_tag_details')}>
-            <div className="flex items-center">
-              <JumpIconButton
-                className={defaultShowAction ? '' : 'hidden group-hover:flex'}
-                onClick={() => {
-                  openBlank(getTagDetailURL(tagID || ''));
-                }}
-              />
-            </div>
-          </Tooltip>
-        ) : null}
-      </div>
     </div>
   );
 }
@@ -79,7 +49,7 @@ export function AnnotationNameScore({
   annotationResult,
   enablePopover = false,
   border = true,
-  defaultShowAction,
+  defaultShowAction: _defaultShowAction,
 }: {
   annotation?: ColumnAnnotation;
   annotationResult?: AnnotateRecord;
@@ -93,9 +63,6 @@ export function AnnotationNameScore({
         name={annotation?.tag_key_name}
         annotation={annotation}
         annotateRecord={annotationResult}
-        tagID={annotation?.tag_key_id}
-        enableLinkJump={true}
-        defaultShowAction={defaultShowAction}
         border={border}
       />
     );
@@ -111,9 +78,6 @@ export function AnnotationNameScore({
             name={annotation?.tag_key_name}
             annotation={annotation}
             annotateRecord={annotationResult}
-            tagID={annotation?.tag_key_id}
-            enableLinkJump={true}
-            defaultShowAction={true}
             border={false}
           />
         </div>
@@ -124,9 +88,7 @@ export function AnnotationNameScore({
           name={annotation?.tag_key_name}
           annotation={annotation}
           annotateRecord={annotationResult}
-          tagID={annotation?.tag_key_id}
           border={border}
-          defaultShowAction={defaultShowAction}
         />
       </div>
     </Popover>

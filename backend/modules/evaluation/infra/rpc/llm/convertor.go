@@ -75,10 +75,74 @@ func MessageDO2DTO(do *commonentity.Message) *runtimedto.Message {
 	if do == nil {
 		return nil
 	}
-	return &runtimedto.Message{
-		Role:         RoleDO2DTO(do.Role),
-		Content:      do.Content.Text,
-		ResponseMeta: nil,
+	result := &runtimedto.Message{Role: RoleDO2DTO(do.Role), ResponseMeta: nil}
+	if do.Content == nil {
+		return result
+	}
+	if len(do.Content.MultiPart) > 0 || gptr.Indirect(do.Content.ContentType) == commonentity.ContentTypeMultipart {
+		result.MultimodalContents = ContentPartsDO2DTO(do.Content.MultiPart)
+		return result
+	}
+	if part := ContentPartDO2DTO(do.Content); part != nil && part.GetType() != runtimedto.ChatMessagePartTypeText {
+		result.MultimodalContents = []*runtimedto.ChatMessagePart{part}
+		return result
+	}
+	result.Content = do.Content.Text
+	return result
+}
+
+func ContentPartsDO2DTO(contents []*commonentity.Content) []*runtimedto.ChatMessagePart {
+	result := make([]*runtimedto.ChatMessagePart, 0, len(contents))
+	for _, content := range contents {
+		if content == nil {
+			continue
+		}
+		if len(content.MultiPart) > 0 {
+			result = append(result, ContentPartsDO2DTO(content.MultiPart)...)
+			continue
+		}
+		if part := ContentPartDO2DTO(content); part != nil {
+			result = append(result, part)
+		}
+	}
+	return result
+}
+
+func ContentPartDO2DTO(content *commonentity.Content) *runtimedto.ChatMessagePart {
+	if content == nil {
+		return nil
+	}
+	switch gptr.Indirect(content.ContentType) {
+	case commonentity.ContentTypeImage:
+		if content.Image == nil {
+			return nil
+		}
+		url := gptr.Indirect(content.Image.URL)
+		if url == "" {
+			url = gptr.Indirect(content.Image.URI)
+		}
+		return &runtimedto.ChatMessagePart{
+			Type: gptr.Of(runtimedto.ChatMessagePartTypeImageURL),
+			ImageURL: &runtimedto.ChatMessageImageURL{
+				URL: gptr.Of(url), Detail: gptr.Of(runtimedto.ImageURLDetailAuto),
+			},
+		}
+	case commonentity.ContentTypeVideo:
+		if content.Video == nil {
+			return nil
+		}
+		url := gptr.Indirect(content.Video.URL)
+		if url == "" {
+			url = gptr.Indirect(content.Video.URI)
+		}
+		return &runtimedto.ChatMessagePart{
+			Type: gptr.Of(runtimedto.ChatMessagePartTypeVideoURL),
+			VideoURL: &runtimedto.ChatMessageVideoURL{
+				URL: gptr.Of(url),
+			},
+		}
+	default:
+		return &runtimedto.ChatMessagePart{Type: gptr.Of(runtimedto.ChatMessagePartTypeText), Text: content.Text}
 	}
 }
 

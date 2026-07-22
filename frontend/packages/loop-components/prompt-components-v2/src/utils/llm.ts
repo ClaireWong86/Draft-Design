@@ -14,6 +14,7 @@ import {
   type DebugToolCall,
   type Message,
   type Prompt,
+  ContentType,
   Role,
   ToolChoiceType,
 } from '@cozeloop/api-schema/prompt';
@@ -31,6 +32,7 @@ import {
   convertMultimodalMessageToSend,
   messageId,
   messagesHasSnippet,
+  sanitizeMediaURLForSend,
 } from './prompt';
 
 export enum PromptExecuteStatus {
@@ -146,13 +148,22 @@ export const createLLMRun = ({
     ? Boolean(stepDebugger)
     : false;
 
-  const newHistoriceMessages: Message[] = (history || [])?.map(it => ({
-    role: it.role,
-    content: it.content,
-    tool_calls: it.tool_calls?.map(item => item.tool_call!),
-    parts: it.parts,
-    tool_call_id: it.tool_call_id,
-  }));
+  const newHistoriceMessages: Message[] = (history || [])?.map(it => {
+    const historyMessage: Message = {
+      role: it.role,
+      content: it.content || '',
+      parts: it.parts,
+      tool_call_id: it.tool_call_id,
+    };
+    const sanitized = convertMultimodalMessageToSend(historyMessage);
+    return {
+      role: sanitized.role,
+      content: sanitized.content,
+      tool_calls: it.tool_calls?.map(item => item.tool_call!),
+      parts: sanitized.parts,
+      tool_call_id: sanitized.tool_call_id,
+    };
+  });
 
   const newMessage = message
     ? convertMultimodalMessageToSend(message)
@@ -190,7 +201,21 @@ export const createLLMRun = ({
       key: it.key,
       value: it.value ? it.value : undefined,
       placeholder_messages: it.placeholder_messages,
-      multi_part_values: it.multi_part_values,
+      multi_part_values: it.multi_part_values?.map(part => {
+        if (part.type === ContentType.ImageURL && part.image_url) {
+          return {
+            ...part,
+            image_url: sanitizeMediaURLForSend(part.image_url),
+          };
+        }
+        if (part.type === ContentType.VideoURL && part.video_url) {
+          return {
+            ...part,
+            video_url: sanitizeMediaURLForSend(part.video_url),
+          };
+        }
+        return part;
+      }),
     })),
     mock_tools: mockTools,
     single_step_debug: singleStepDebug,

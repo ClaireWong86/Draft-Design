@@ -6,6 +6,7 @@ package service
 import (
 	"context"
 	"fmt"
+	"net/url"
 	"strconv"
 
 	"gorm.io/gorm"
@@ -21,6 +22,7 @@ import (
 	common_entity "github.com/coze-dev/coze-loop/backend/modules/data/domain/entity"
 	"github.com/coze-dev/coze-loop/backend/modules/data/pkg/consts"
 	"github.com/coze-dev/coze-loop/backend/modules/data/pkg/errno"
+	"github.com/coze-dev/coze-loop/backend/pkg/localos"
 	"github.com/coze-dev/coze-loop/backend/pkg/logs"
 )
 
@@ -41,8 +43,91 @@ func (s *DatasetServiceImpl) LoadItemData(ctx context.Context, items ...*entity.
 		}
 	}
 
-	// todo: sign attachments url
+	if err := s.signAttachmentURLs(ctx, items...); err != nil {
+		logs.CtxWarn(ctx, "sign attachments url failed: %v", err)
+	}
 	return nil
+}
+
+// signAttachmentURLs 为 item 中多模态附件（图片/音频/视频，含图文混排 parts）的 URI
+// 签发可访问的下载 URL，写入 ObjectStorage.URL，供前端回显。
+func (s *DatasetServiceImpl) signAttachmentURLs(ctx context.Context, items ...*entity.Item) error {
+	if s.objectStorage == nil {
+		return nil
+	}
+
+	// 收集所有附件的 URI（去重）
+	var attachments []*entity.ObjectStorage
+	for _, item := range items {
+		if item == nil {
+			continue
+		}
+		for _, fields := range item.AllData() {
+			for _, fd := range fields {
+				attachments = append(attachments, collectAttachments(fd)...)
+			}
+		}
+	}
+	if len(attachments) == 0 {
+		return nil
+	}
+
+	uriSet := make(map[string]struct{}, len(attachments))
+	keys := make([]string, 0, len(attachments))
+	for _, att := range attachments {
+		if att.URI == "" {
+			continue
+		}
+		if _, ok := uriSet[att.URI]; ok {
+			continue
+		}
+		uriSet[att.URI] = struct{}{}
+		keys = append(keys, att.URI)
+	}
+	if len(keys) == 0 {
+		return nil
+	}
+
+	signURLs, _, err := s.objectStorage.BatchSignDownloadReq(ctx, keys)
+	if err != nil {
+		return err
+	}
+
+	urlByURI := make(map[string]string, len(keys))
+	for i, key := range keys {
+		if i >= len(signURLs) {
+			break
+		}
+		signURL := signURLs[i]
+		// 本地 MinIO：保留 EscapedPath，去掉 host，避免 SigV4 签名失效（对齐 foundation SignDownloadFile）
+		if parsedURL, perr := url.Parse(signURL); perr == nil && parsedURL.Host == localos.GetLocalOSHost() {
+			signURL = fmt.Sprintf("%s?%s", parsedURL.EscapedPath(), parsedURL.RawQuery)
+		}
+		urlByURI[key] = signURL
+	}
+
+	for _, att := range attachments {
+		if att.URI == "" {
+			continue
+		}
+		if signURL, ok := urlByURI[att.URI]; ok {
+			att.URL = signURL
+		}
+	}
+	return nil
+}
+
+// collectAttachments 递归收集 FieldData 及其 parts 中的所有附件
+func collectAttachments(fd *entity.FieldData) []*entity.ObjectStorage {
+	if fd == nil {
+		return nil
+	}
+	var res []*entity.ObjectStorage
+	res = append(res, fd.Attachments...)
+	for _, part := range fd.Parts {
+		res = append(res, collectAttachments(part)...)
+	}
+	return res
 }
 
 func (s *DatasetServiceImpl) ArchiveAndCreateItem(ctx context.Context, ds *DatasetWithSchema, oldID int64, item *entity.Item) error {

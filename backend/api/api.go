@@ -120,7 +120,10 @@ func Init(
 			return lotrace.NewLocalTraceService(observabilityHandler.ITraceApplication)
 		},
 		func() taskservice.Client {
-			return lotask.NewLocalTaskService(observabilityHandler.ITaskApplication)
+			// Lazy: observabilityHandler is still nil at this point (wired below).
+			return newLazyTaskClient(func() taskservice.Client {
+				return lotask.NewLocalTaskService(observabilityHandler.ITaskApplication)
+			})
 		},
 	)
 	if err != nil {

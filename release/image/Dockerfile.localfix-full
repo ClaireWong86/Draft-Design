@@ -1,0 +1,53 @@
+# Local overlay image: rebuild the backend Go binary AND the frontend artifacts
+# from source, then lay them over the official cozedev/coze-loop image (which
+# provides the runtime, entrypoint and nginx config). Use this variant when a
+# hotfix touches frontend code (e.g. enabling multimodal eval); the backend-only
+# Dockerfile.localfix reuses the official frontend resources.
+FROM golang:1.24-alpine AS backend_builder
+
+ENV GOPROXY=https://goproxy.cn,direct
+
+RUN apk add --no-cache git
+
+WORKDIR /coze-loop
+
+COPY ./backend/go.mod ./backend/go.sum /coze-loop/src/backend/
+RUN go mod download -C ./src/backend -x
+
+COPY ./backend/ /coze-loop/src/backend/
+RUN mkdir -p ./bin && \
+    go -C /coze-loop/src/backend build -buildvcs=false -o /coze-loop/bin/main "./cmd"
+
+# Frontend build stage (mirrors release/image/Dockerfile frontend_builder)
+FROM node:24-alpine AS frontend_builder
+
+RUN apk add --no-cache bash
+
+RUN corepack enable && \
+    corepack prepare pnpm@10.27.0 --activate && \
+    npm install -g @microsoft/rush@5.172.1
+
+WORKDIR /coze-loop
+
+COPY ./frontend/ /coze-loop/src/frontend/
+COPY ./common/ /coze-loop/src/common/
+COPY ./rush.json /coze-loop/src/rush.json
+# NOTE: build-artifact.sh uses the strict `rush install`, which fails on this
+# fork because pnpm-lock.yaml has drifted (e.g. @cozeloop/community-base). For a
+# local overlay build we use `rush update` to reconcile the lockfile in-container
+# (tracked files on the host are untouched), then build cozeloop + its deps.
+ENV BUILD_BRANCH=branch404
+# Remove any stale rush temp/store copied from the host (its recorded store path
+# points at the host and triggers EXDEV / store-path-mismatch errors in-container).
+RUN rm -rf /coze-loop/src/common/temp && \
+    cd /coze-loop/src/frontend/apps/cozeloop && \
+    rush update --ignore-hooks && \
+    rush rebuild --to . --ignore-hooks --timeline && \
+    mkdir -p /coze-loop/resources && \
+    rm -rf /coze-loop/resources/* && \
+    mv dist/* /coze-loop/resources/
+
+FROM docker.io/cozedev/coze-loop:1.5.1
+
+COPY --from=backend_builder /coze-loop/bin/main /coze-loop/bin/main
+COPY --from=frontend_builder /coze-loop/resources/ /coze-loop/resources/

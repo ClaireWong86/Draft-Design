@@ -10,6 +10,10 @@ if [[ ! -x "$DOCKER_BIN" ]]; then
   DOCKER_BIN="docker"
 fi
 
+# Lightweight image used to seed bootstrap/config named volumes. Kept small and
+# already present locally so volume seeding works offline (e.g. under Podman).
+FILL_IMAGE="${COZE_LOOP_FILL_IMAGE:-alpine:latest}"
+
 COMPOSE_ARGS=(
   compose
   -f "$WORK_DIR/docker-compose.yml"
@@ -27,6 +31,7 @@ Usage:
   scripts/local/docker-compose-local.sh refresh-config
   scripts/local/docker-compose-local.sh render-config
   scripts/local/docker-compose-local.sh restart-app
+    (restarts app+nginx; syncs frontend from coze-loop:local-fix when present)
   scripts/local/docker-compose-local.sh doctor
 
 This wrapper avoids Docker Desktop bind-mount hangs by copying compose files to
@@ -46,7 +51,7 @@ run_docker() {
 
 check_docker() {
   if ! run_docker info >/dev/null 2>&1; then
-    echo "Docker Desktop is not ready. Start Docker Desktop first." >&2
+    echo "Container runtime is not ready. Start Podman Desktop or Docker Desktop first." >&2
     exit 1
   fi
 }
@@ -81,11 +86,23 @@ VOLUMES
   ' "$WORK_DIR/docker-compose.yml"
 }
 
+patch_rmq_heap() {
+  # RocketMQ's runbroker.sh/runserver.sh default to multi-GB JVM heaps (broker
+  # -Xmx8g, namesrv -Xmx4g), which OOM-kills the broker on small local VMs.
+  # Inject JAVA_OPT_EXT (appended after the defaults, so the last -Xmx wins) to
+  # cap the heap. Local-only: applied to the temp compose, never the source.
+  perl -0pi -e '
+    s#(    container_name: "coze-loop-rmq-broker"\n)#$1    environment:\n      JAVA_OPT_EXT: "-server -Xms512m -Xmx'"${COZE_LOOP_RMQ_BROKER_XMX:-1g}"' -Xmn256m"\n#;
+    s#(    container_name: "coze-loop-rmq-namesrv"\n)#$1    environment:\n      JAVA_OPT_EXT: "-server -Xms256m -Xmx'"${COZE_LOOP_RMQ_NAMESRV_XMX:-512m}"' -Xmn128m"\n#;
+  ' "$WORK_DIR/docker-compose.yml"
+}
+
 prepare_work_dir() {
   rm -rf "$WORK_DIR"
   mkdir -p "$(dirname "$WORK_DIR")"
   cp -R "$SOURCE_DIR" "$WORK_DIR"
   patch_compose_file
+  patch_rmq_heap
 }
 
 env_value() {
@@ -117,7 +134,7 @@ ark_chat_base_url() {
   esac
 }
 
-joybuild_openai_base_url() {
+joybuild_native_base_url() {
   local value="${1%/}"
 
   case "$value" in
@@ -133,6 +150,7 @@ apply_openai_model_config() {
   local joybuild_api_key
   local joybuild_base_url
   local joybuild_model
+  local joybuild_models_raw
   local ark_api_key
   local ark_base_url
   local ark_model
@@ -150,8 +168,12 @@ apply_openai_model_config() {
   deepseek_base_url="$(env_or_file_value DEEPSEEK_BASE_URL "https://api.deepseek.com")"
   deepseek_model="$(env_or_file_value DEEPSEEK_MODEL "deepseek-v4-pro")"
   joybuild_api_key="$(env_or_file_value JOYBUILD_API_KEY "")"
-  joybuild_base_url="$(joybuild_openai_base_url "$(env_or_file_value JOYBUILD_BASE_URL "http://ai-api.jdcloud.com")")"
+  joybuild_base_url="$(joybuild_native_base_url "$(env_or_file_value JOYBUILD_BASE_URL "http://ai-api.jdcloud.com")")"
   joybuild_model="$(env_or_file_value JOYBUILD_MODEL "Gemini-3.1-Flash-Lite")"
+  joybuild_models_raw="$(env_or_file_value JOYBUILD_MODELS "")"
+  if [[ -z "$joybuild_models_raw" ]]; then
+    joybuild_models_raw="$joybuild_model"
+  fi
 
   if [[ -z "$api_key" && -z "$ark_api_key" && -z "$deepseek_api_key" && -z "$joybuild_api_key" ]]; then
     return 0
@@ -447,15 +469,27 @@ EOF
   fi
 
   if [[ -n "$joybuild_api_key" ]]; then
+    # Native joybuild protocol (see backend .../llmimpl/eino/joybuild.go), matching
+    # tire-ai-diagnosis (VLM_PROVIDER=joybuild -> /v1/responses). Requires the
+    # source-built app image (coze-loop:local-fix); the official image lacks this
+    # adapter. base_url already ends with /v1, so the adapter posts to /v1/responses.
+    # JOYBUILD_MODELS (comma-separated) emits multiple entries; JOYBUILD_MODEL is fallback.
+    local joybuild_id=4
+    local _jb_m
+    IFS=',' read -ra _joybuild_model_list <<< "$joybuild_models_raw"
+    for _jb_m in "${_joybuild_model_list[@]}"; do
+      _jb_m="${_jb_m#"${_jb_m%%[![:space:]]*}"}"
+      _jb_m="${_jb_m%"${_jb_m##*[![:space:]]}"}"
+      [[ -z "$_jb_m" ]] && continue
     cat >>"$WORK_DIR/conf/model_config.yaml" <<EOF
-  - id: 4
-    name: "$joybuild_model"
-    desc: "JoyBuild model configured from tire-ai-diagnosis style JOYBUILD_* variables"
+  - id: $joybuild_id
+    name: "$_jb_m"
+    desc: "JoyBuild native (/v1/responses) direct to $joybuild_base_url"
     ability:
       max_context_tokens: 65536
       max_input_tokens: 65536
       max_output_tokens: 8192
-      function_call: true
+      function_call: false
       json_mode: true
       multi_modal: true
       ability_multi_modal:
@@ -466,17 +500,13 @@ EOF
           max_image_size: 20
           max_image_count: 20
     frame: "eino"
-    protocol: "openai"
+    protocol: "joybuild"
     protocol_config:
       base_url: "$joybuild_base_url"
       api_key: "$joybuild_api_key"
-      model: "$joybuild_model"
+      model: "$_jb_m"
       timeout_ms: 180000
-      protocol_config_openai:
-        by_azure: false
-        api_version: ""
-        response_format_type: ""
-        response_format_json_schema: ""
+      protocol_config_joybuild: {}
     scenario_configs:
       default:
         scenario: "default"
@@ -540,21 +570,25 @@ EOF
           max: "2.0"
           default_val: "0"
 EOF
+      joybuild_id=$((joybuild_id + 1))
+    done
   fi
 }
 
 fill_volume() {
   local volume="$1"
   local source="$2"
-  local container="coze-loop-fill-${volume//_/-}"
 
-  run_docker volume create "$volume" >/dev/null
-  run_docker rm -f "$container" >/dev/null 2>&1 || true
-  run_docker create --name "$container" -v "$volume":/target redis:8.2.0 sh -c 'sleep 3600' >/dev/null
-  run_docker start "$container" >/dev/null
-  run_docker exec "$container" sh -c 'find /target -mindepth 1 -maxdepth 1 -exec rm -rf {} +'
-  run_docker cp "$source/." "$container:/target/"
-  run_docker rm -f "$container" >/dev/null
+  run_docker volume create "$volume" >/dev/null 2>&1 || true
+  # Copy source into the named volume via a throwaway container. Using a bind
+  # mount + cp -a (instead of `docker cp` into a long-lived container) keeps this
+  # fast and reliable on both Docker Desktop and Podman. Also restore +x on
+  # entrypoint/shell scripts, which some runtimes drop during the copy.
+  run_docker run --rm \
+    -v "$volume":/target \
+    -v "$source":/source:ro \
+    "$FILL_IMAGE" \
+    sh -c 'find /target -mindepth 1 -maxdepth 1 -exec rm -rf {} + 2>/dev/null; cp -a /source/. /target/ && find /target -type f -name "*.sh" -exec chmod +x {} + 2>/dev/null; true'
 }
 
 apply_model_health() {
@@ -568,13 +602,65 @@ apply_model_health() {
   fi
 }
 
+work_env_value() {
+  local name="$1"
+  local envf="$WORK_DIR/.env"
+
+  [[ -f "$envf" ]] || return 1
+  awk -F= -v key="$name" '$1 == key { sub(/^[^=]*=/, ""); print; found=1; exit } END { exit found ? 0 : 1 }' "$envf"
+}
+
+# Point the app service at a locally built backend image so source hotfixes (e.g.
+# the SignUpload EscapedPath fix) take effect. Defaults to coze-loop:local-fix
+# when that image exists; each COZE_LOOP_APP_IMAGE_* can be overridden via .env.local.
+apply_app_image_override() {
+  local envf="$WORK_DIR/.env"
+  [[ -f "$envf" ]] || return 0
+
+  local registry repository name tag
+  registry="$(work_env_value COZE_LOOP_APP_IMAGE_REGISTRY || echo docker.io)"
+  repository="$(work_env_value COZE_LOOP_APP_IMAGE_REPOSITORY || echo cozedev)"
+  name="$(work_env_value COZE_LOOP_APP_IMAGE_NAME || echo coze-loop)"
+  tag="$(work_env_value COZE_LOOP_APP_IMAGE_TAG || echo 1.5.1)"
+
+  # Auto-select the local backend-fix image when present (and user hasn't pinned one).
+  if [[ -z "$(env_value COZE_LOOP_APP_IMAGE_TAG || true)" ]] &&
+     run_docker image inspect coze-loop:local-fix >/dev/null 2>&1; then
+    registry="docker.io"
+    repository="library"
+    name="coze-loop"
+    tag="local-fix"
+  fi
+
+  # Explicit .env.local overrides win.
+  registry="$(env_or_file_value COZE_LOOP_APP_IMAGE_REGISTRY "$registry")"
+  repository="$(env_or_file_value COZE_LOOP_APP_IMAGE_REPOSITORY "$repository")"
+  name="$(env_or_file_value COZE_LOOP_APP_IMAGE_NAME "$name")"
+  tag="$(env_or_file_value COZE_LOOP_APP_IMAGE_TAG "$tag")"
+
+  perl -0pi -e 's/^COZE_LOOP_APP_IMAGE_(REGISTRY|REPOSITORY|NAME|TAG)=.*\n//mg' "$envf"
+  # Ensure the file ends with a newline so appended vars are not glued onto the last line.
+  [[ -n "$(tail -c1 "$envf")" ]] && printf '\n' >>"$envf"
+  {
+    echo "COZE_LOOP_APP_IMAGE_REGISTRY=$registry"
+    echo "COZE_LOOP_APP_IMAGE_REPOSITORY=$repository"
+    echo "COZE_LOOP_APP_IMAGE_NAME=$name"
+    echo "COZE_LOOP_APP_IMAGE_TAG=$tag"
+  } >>"$envf"
+
+  echo "App image: $registry/$repository/$name:$tag"
+}
+
 refresh_config() {
   check_docker
   prepare_work_dir
+  apply_app_image_override
   apply_openai_model_config
   apply_model_health
 
-  run_docker image inspect redis:8.2.0 >/dev/null 2>&1 || run_docker pull redis:8.2.0
+  if [[ "${COZE_LOOP_SKIP_FILL_IMAGE_CHECK:-0}" != "1" ]]; then
+    run_docker image inspect "$FILL_IMAGE" >/dev/null 2>&1 || run_docker pull "$FILL_IMAGE"
+  fi
 
   fill_volume coze-loop_app_bootstrap "$WORK_DIR/bootstrap/app"
   fill_volume coze-loop_app_conf "$WORK_DIR/conf"
@@ -595,6 +681,7 @@ refresh_config() {
 
 render_config() {
   prepare_work_dir
+  apply_app_image_override
   apply_openai_model_config
   apply_model_health
   echo "Rendered compose config: $WORK_DIR"
@@ -628,7 +715,30 @@ logs() {
 restart_app() {
   check_docker
   [[ -f "$WORK_DIR/docker-compose.yml" ]] || prepare_work_dir
-  run_docker "${COMPOSE_ARGS[@]}" restart app
+  sync_frontend_resources
+  run_docker "${COMPOSE_ARGS[@]}" restart app nginx
+}
+
+# Copy /coze-loop/resources from the local-fix image into the nginx data volume.
+# App/nginx both mount this volume; restarting alone does not refresh stale UI.
+sync_frontend_resources() {
+  local image="${COZE_LOOP_LOCAL_FIX_IMAGE:-coze-loop:local-fix}"
+  local volume
+  volume="$(work_env_value COZE_LOOP_NGINX_DATA_VOLUME_NAME || echo coze-loop-nginx-data)"
+
+  if ! run_docker image inspect "$image" >/dev/null 2>&1; then
+    return 0
+  fi
+
+  echo "Syncing frontend resources from $image into volume $volume"
+  run_docker compose -f "$WORK_DIR/docker-compose.yml" --env-file "$WORK_DIR/.env" stop app nginx >/dev/null 2>&1 || true
+  # Use shared SELinux label (:z) so app + nginx can both read the volume on Podman.
+  # Private :Z from a one-off sync container causes nginx 403 (Permission denied).
+  run_docker run --rm \
+    -v "${volume}:/target:z" \
+    --entrypoint sh \
+    "$image" \
+    -c 'rm -rf /target/* && cp -a /coze-loop/resources/. /target/ && chmod -R a+rX /target'
 }
 
 doctor() {

@@ -8,7 +8,6 @@ package apis
 
 import (
 	"context"
-
 	"github.com/cloudwego/kitex/pkg/endpoint"
 	"github.com/coze-dev/coze-loop/backend/infra/ck"
 	"github.com/coze-dev/coze-loop/backend/infra/db"
@@ -38,7 +37,9 @@ import (
 	conf2 "github.com/coze-dev/coze-loop/backend/modules/data/infra/conf"
 	"github.com/coze-dev/coze-loop/backend/modules/data/infra/rpc/foundation"
 	application4 "github.com/coze-dev/coze-loop/backend/modules/evaluation/application"
+	"github.com/coze-dev/coze-loop/backend/modules/evaluation/infra/repo/optimize"
 	"github.com/coze-dev/coze-loop/backend/modules/evaluation/infra/rpc/data"
+	"github.com/coze-dev/coze-loop/backend/modules/evaluation/infra/rpc/llm"
 	"github.com/coze-dev/coze-loop/backend/modules/evaluation/infra/rpc/prompt"
 	"github.com/coze-dev/coze-loop/backend/modules/evaluation/infra/rpc/schedule"
 	"github.com/coze-dev/coze-loop/backend/modules/evaluation/infra/rpc/trajectory"
@@ -149,7 +150,10 @@ func InitEvaluationHandler(ctx context.Context, idgen2 idgen.IIDGenerator, db2 d
 	if err != nil {
 		return nil, err
 	}
-	evaluationHandler := NewEvaluationHandler(iExperimentApplication, evaluatorService, evaluationSetService, evalTargetService, evalOpenAPIService)
+	iOptimizeTaskRepo := optimize.NewOptimizeTaskRepo(db2)
+	illmProvider := llm.NewLLMRPCProvider(llmClient)
+	optimizeService := application4.NewOptimizeApplication(idgen2, iOptimizeTaskRepo, illmProvider, iExperimentApplication, evaluatorService, evaluationSetService)
+	evaluationHandler := NewEvaluationHandler(iExperimentApplication, evaluatorService, evaluationSetService, evalTargetService, evalOpenAPIService, optimizeService)
 	return evaluationHandler, nil
 }
 
@@ -210,7 +214,7 @@ var (
 		NewPromptHandler, application2.InitPromptManageApplication, application2.InitToolManageApplication, application2.InitPromptDebugApplication, application2.InitPromptExecuteApplication, application2.InitPromptOpenAPIApplication,
 	)
 	evaluationSet = wire.NewSet(
-		NewEvaluationHandler, data.NewDatasetRPCAdapter, prompt.NewPromptRPCAdapter, schedule.ExptScheduleRPCSet, trajectory.TrajectoryRPCSet, application4.InitExperimentApplication, application4.InitEvaluatorApplication, application4.InitEvaluationSetApplication, application4.InitEvalTargetApplication, application4.InitEvalOpenAPIApplication, provideTaskClient,
+		NewEvaluationHandler, data.NewDatasetRPCAdapter, prompt.NewPromptRPCAdapter, schedule.ExptScheduleRPCSet, trajectory.TrajectoryRPCSet, application4.InitExperimentApplication, application4.InitEvaluatorApplication, application4.InitEvaluationSetApplication, application4.InitEvalTargetApplication, application4.InitEvalOpenAPIApplication, application4.NewOptimizeApplication, optimize.NewOptimizeTaskRepo, llm.NewLLMRPCProvider, provideTaskClient,
 	)
 	dataSet = wire.NewSet(
 		NewDataHandler, application5.InitDatasetApplication, application5.InitTagApplication, foundation.NewAuthRPCProvider, conf2.NewConfigerFactory,

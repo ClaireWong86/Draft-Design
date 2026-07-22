@@ -14,10 +14,12 @@
   },
   "dependencies": {
     "@coze-arch/coze-design": "0.0.7-alpha.5f0418",
+    "@cozeloop/api-schema": "workspace:*",
     "@cozeloop/biz-hooks-adapter": "workspace:*",
     "@cozeloop/evaluate": "workspace:*",
     "@cozeloop/evaluate-components": "workspace:*",
     "@cozeloop/i18n-adapter": "workspace:*",
+    "@cozeloop/prompt-pages": "workspace:*",
     "@cozeloop/toolkit": "workspace:*"
   },
   "devDependencies": {
@@ -46,3 +48,4 @@
     "react-router-dom": "^6.22.0"
   }
 }
+

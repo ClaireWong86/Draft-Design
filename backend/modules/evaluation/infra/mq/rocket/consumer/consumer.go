@@ -29,7 +29,28 @@ func NewConsumerWorkers(
 		NewExptTurnResultFilterEventConsumer(NewExptTurnResultFilterConsumer(exptApp), loader),
 		NewExptExportEventConsumer(NewExptExportConsumer(exptApp, exptApp), loader),
 		NewExptLifecycleEventConsumer(NewExptLifecycleConsumer(exptApp, webhookHandler), loader),
+		NewOptimizeTaskWakeEventConsumer(NewOptimizeTaskWakeConsumer(), loader),
 	}, nil
+}
+
+func NewOptimizeTaskWakeEventConsumer(handler mq.IConsumerHandler, loader conf.IConfigLoader) mq.IConsumerWorker {
+	return &OptimizeTaskWakeEventConsumer{
+		IConsumerHandler: handler,
+		IConfigLoader:    loader,
+	}
+}
+
+type OptimizeTaskWakeEventConsumer struct {
+	mq.IConsumerHandler
+	conf.IConfigLoader
+}
+
+func (e *OptimizeTaskWakeEventConsumer) ConsumerCfg(ctx context.Context) (*mq.ConsumerConfig, error) {
+	rmqCfg := &rocket.RMQConf{}
+	if err := e.UnmarshalKey(ctx, rocket.OptimizeTaskWakeEventRMQKey, rmqCfg); err != nil {
+		return nil, err
+	}
+	return gptr.Of(rmqCfg.ToConsumerCfg()), nil
 }
 
 func NewExptSchedulerEventConsumer(handler mq.IConsumerHandler, loader conf.IConfigLoader) mq.IConsumerWorker {

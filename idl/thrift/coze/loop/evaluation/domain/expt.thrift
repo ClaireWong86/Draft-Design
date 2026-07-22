@@ -248,9 +248,9 @@ struct FieldMapping {
     3: optional string from_field_name
 }
 
-// ===============================
+// -------------------------------
 // 通知配置相关结构定义
-// ===============================
+// -------------------------------
 
 // 通知配置（公共触发条件 + 各渠道独立开关/参数）
 struct ExptNotificationConf {
@@ -758,4 +758,3 @@ const FeedbackActionType FeedbackActionType_Cancel_Downvote = "Cancel_Downvote"
 const FeedbackActionType FeedbackActionType_Create_Comment = "Create_Comment"
 const FeedbackActionType FeedbackActionType_Update_Comment = "Update_Comment"
 const FeedbackActionType FeedbackActionType_Delete_Comment = "Delete_Comment"
-

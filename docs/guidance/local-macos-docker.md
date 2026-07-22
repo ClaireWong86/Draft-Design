@@ -131,9 +131,17 @@ JOYBUILD_API_KEY=...
 JOYBUILD_MODEL=Gemini-3.1-Flash-Lite
 ```
 
-配置 `JOYBUILD_API_KEY` 后，`scripts/local/docker-compose-local.sh refresh-config` 会把 JoyBuild 作为新增模型写入运行时 `model_config.yaml`。源码里的 `release/deployment/docker-compose/conf/model_config.yaml` 不写密钥。
+配置 `JOYBUILD_API_KEY` 后，先启动 OpenAI 兼容代理，再刷新 Docker 配置:
 
-注意：`tire-ai-diagnosis` 原生 JoyBuild 客户端调用的是 `JOYBUILD_BASE_URL/v1/responses`，请求体是 Gemini 风格 `contents.parts`。当前 Coze Loop 后端现有协议没有 JoyBuild 专用 adapter，这里将 JoyBuild 作为 `openai` 协议模型接入，因此 `JOYBUILD_BASE_URL` 需要提供 OpenAI Chat Completions 兼容能力，或经过兼容网关转发。
+```bash
+scripts/local/joybuild-proxy.sh
+scripts/local/docker-compose-local.sh refresh-config
+scripts/local/docker-compose-local.sh restart-app
+```
+
+官方 Docker 镜像里没有内置 `joybuild` adapter。本地 Docker 会把 JoyBuild 配成 `protocol: openai`，指向本机 `host.docker.internal:18081`（由 `joybuild-openai-proxy.mjs` 把 chat/completions 转到 `JOYBUILD_BASE_URL/v1/responses`）。
+
+热更新前端（`:8090`）会代理 `/cozeloop-minio` 到 `:8082`。若此前上传过图片，需要删掉旧图片后重新上传；否则 LLM 预取对象时会报 `HTTP请求失败: 404`（界面常显示为模型调用错误）。
 
 如果当前网络无法直连 OpenAI，可以把 `COZE_LOOP_OPENAI_BASE_URL` 换成你能访问的 OpenAI 兼容网关地址，然后执行:
 

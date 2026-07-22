@@ -5,6 +5,7 @@ include "coze.loop.evaluation.evaluator.thrift"
 include "coze.loop.evaluation.expt.thrift"
 include "coze.loop.evaluation.eval_target.thrift"
 include "coze.loop.evaluation.openapi.thrift"
+include "coze.loop.evaluation.optimize.thrift"
 include "coze.loop.evaluation.spi.thrift"
 include "../trajectory.thrift"
 
@@ -19,5 +20,7 @@ service ExperimentService extends coze.loop.evaluation.expt.ExperimentService{}
 service EvalTargetService extends coze.loop.evaluation.eval_target.EvalTargetService{}
 
 service EvalOpenAPIService extends coze.loop.evaluation.openapi.EvaluationOpenAPIService{}
+
+service OptimizeService extends coze.loop.evaluation.optimize.OptimizeService{}
 
 service EvalSPIService extends coze.loop.evaluation.spi.EvaluationSPIService{}

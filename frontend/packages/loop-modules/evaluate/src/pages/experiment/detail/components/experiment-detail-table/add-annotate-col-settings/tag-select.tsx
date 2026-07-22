@@ -6,13 +6,9 @@ import { debounce } from 'lodash-es';
 import classNames from 'classnames';
 import { useRequest } from 'ahooks';
 import { I18n } from '@cozeloop/i18n-adapter';
-import {
-  useOpenWindow,
-  useResourcePageJump,
-} from '@cozeloop/biz-hooks-adapter';
 import { tag } from '@cozeloop/api-schema/data';
 import { DataApi, StoneEvaluationApi } from '@cozeloop/api-schema';
-import { IconCozPlus, IconCozRefresh } from '@coze-arch/coze-design/icons';
+import { IconCozRefresh } from '@coze-arch/coze-design/icons';
 import {
   Button,
   Select,
@@ -40,8 +36,6 @@ export function TagSelect({
   const [dropdownVisible, setDropdownVisible] = useState(false);
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const selectRef = useRef<any>(null);
-  const { openBlank } = useOpenWindow();
-  const { getTagDetailURL, getTagCreateURL } = useResourcePageJump();
 
   const addTag = useRequest(
     (tagID?: string) =>
@@ -82,9 +76,6 @@ export function TagSelect({
                 await addTag.runAsync(val.tag_key_id);
                 selectRef.current?.close();
                 onAdd?.(val);
-              }}
-              onDetail={info => {
-                openBlank(getTagDetailURL(info.tag_key_id || ''));
               }}
             />
           ),
@@ -130,17 +121,6 @@ export function TagSelect({
       onDropdownVisibleChange={setDropdownVisible}
       optionList={search.data}
       onSearch={debounce(handleSearch, 500)}
-      outerBottomSlot={
-        <div
-          className="w-full pt-2 pl-[10px] cursor-pointer font-medium text-brand-9 flex items-center"
-          onClick={() => {
-            openBlank(getTagCreateURL());
-          }}
-        >
-          <IconCozPlus />
-          <span className="ml-2">{I18n.t('create_tag')}</span>
-        </div>
-      }
     />
   );
 }
@@ -148,11 +128,9 @@ export function TagSelect({
 function TagSelectOption({
   item,
   onAdd,
-  onDetail,
 }: {
   item: tag.TagInfo;
   onAdd: (item: tag.TagInfo) => Promise<void>;
-  onDetail: (item: tag.TagInfo) => void;
 }) {
   const [adding, setAdding] = useState(false);
   const disabled = item.status !== tag.TagStatus.Active;
@@ -170,16 +148,7 @@ function TagSelectOption({
           <div className="ml-6 whitespace-nowrap invisible group-hover:visible">
             <Typography.Text
               link
-              className="text-[13px]"
-              onClick={() => {
-                onDetail(item);
-              }}
-            >
-              {I18n.t('detail')}
-            </Typography.Text>
-            <Typography.Text
-              link
-              className={classNames('ml-[20px] text-[13px]', {
+              className={classNames('text-[13px]', {
                 '!text-brand-7': disabled,
               })}
               disabled={adding || disabled}

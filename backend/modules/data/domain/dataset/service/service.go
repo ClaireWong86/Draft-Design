@@ -8,6 +8,7 @@ import (
 	"io/fs"
 
 	"github.com/coze-dev/coze-loop/backend/infra/db"
+	"github.com/coze-dev/coze-loop/backend/infra/fileserver"
 	"github.com/coze-dev/coze-loop/backend/infra/idgen"
 	"github.com/coze-dev/coze-loop/backend/infra/lock"
 	"github.com/coze-dev/coze-loop/backend/modules/data/domain/component/conf"
@@ -91,13 +92,14 @@ type IFileStoreService interface {
 var _ IDatasetAPI = (*DatasetServiceImpl)(nil)
 
 type DatasetServiceImpl struct {
-	txDB     db.Provider
-	idgen    idgen.IIDGenerator
-	repo     repo.IDatasetAPI
-	fsUnion  vfs.IUnionFS
-	producer mq.IDatasetJobPublisher
-	configer conf.IConfig
-	locker   lock.ILocker
+	txDB          db.Provider
+	idgen         idgen.IIDGenerator
+	repo          repo.IDatasetAPI
+	fsUnion       vfs.IUnionFS
+	producer      mq.IDatasetJobPublisher
+	configer      conf.IConfig
+	locker        lock.ILocker
+	objectStorage fileserver.BatchObjectStorage
 
 	storageConfig func() *conf.DatasetItemStorage
 	specConfig    func() *conf.DatasetSpec
@@ -106,7 +108,7 @@ type DatasetServiceImpl struct {
 }
 
 func NewDatasetServiceImpl(db db.Provider, idgen idgen.IIDGenerator, repo repo.IDatasetAPI, configer conf.IConfig,
-	producer mq.IDatasetJobPublisher, fsUnion vfs.IUnionFS, locker lock.ILocker,
+	producer mq.IDatasetJobPublisher, fsUnion vfs.IUnionFS, locker lock.ILocker, objectStorage fileserver.BatchObjectStorage,
 ) IDatasetAPI {
 	return &DatasetServiceImpl{
 		txDB:          db,
@@ -116,6 +118,7 @@ func NewDatasetServiceImpl(db db.Provider, idgen idgen.IIDGenerator, repo repo.I
 		producer:      producer,
 		configer:      configer,
 		locker:        locker,
+		objectStorage: objectStorage,
 		storageConfig: configer.GetDatasetItemStorage,
 		specConfig:    configer.GetDatasetSpec,
 		featConfig:    configer.GetDatasetFeature,

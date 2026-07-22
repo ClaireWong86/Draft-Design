@@ -157,8 +157,10 @@ export const MultipartEditor: React.FC<MultipartEditorProps> = ({
                     },
                     image: {
                       ...item.image,
-                      url,
+                      url: '',
                       uri,
+                      // Keep object URL for local preview only.
+                      thumb_url: url,
                       storage_provider: StorageProvider.ImageX,
                     },
                   }
@@ -170,8 +172,9 @@ export const MultipartEditor: React.FC<MultipartEditorProps> = ({
                     },
                     video: {
                       ...item.video,
-                      url,
+                      url: '',
                       uri,
+                      thumb_url: url,
                       storage_provider: StorageProvider.ImageX,
                     },
                   };

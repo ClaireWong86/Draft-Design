@@ -4,7 +4,7 @@
 /* eslint-disable @coze-arch/max-line-per-function */
 /* eslint-disable max-lines-per-function */
 /* eslint-disable complexity */
-import { useMemo } from 'react';
+import { useEffect, useMemo } from 'react';
 
 import { useShallow } from 'zustand/react/shallow';
 import { nanoid } from 'nanoid';
@@ -79,8 +79,15 @@ export function PromptHeader() {
     renderExtraHeaderDropdown,
     activeTab,
     extraTabs,
+    submitRequestKey,
   } = usePromptDevProviderContext();
   const submitModal = useModalData();
+
+  useEffect(() => {
+    if (submitRequestKey && submitRequestKey > 0) {
+      submitModal.open();
+    }
+  }, [submitRequestKey]);
   const deleteModal = useModalData<Prompt>();
   const snippetUseageModal = useModalData();
 

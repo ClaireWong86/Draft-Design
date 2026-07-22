@@ -9,7 +9,7 @@
 Level-6  apps/cozeloop/                    主 SPA 应用（React 18, Rsbuild）
    ↑
 Level-5  packages/loop-pages/              5 个页面模块
-   ↑       auth-pages, evaluate-pages, observation-pages, prompt-pages, tag-pages
+   ↑       auth-pages, evaluate-pages, observation-pages, prompt-pages
 Level-4  packages/loop-modules/            高阶业务模块
    ↑       evaluate/
 Level-3  packages/loop-components/         13 个 UI 组件包 + adapter
@@ -30,7 +30,6 @@ Level-1  config/ (6) + infra/ (4+)         工具链配置 + 基础设施
 | `evaluate-pages` | 评测相关页面（评测集、评估器、实验） |
 | `observation-pages` | 可观测性页面（Trace 查询、分析） |
 | `prompt-pages` | Prompt 管理页面（编辑、Playground、版本） |
-| `tag-pages` | 标签管理页面 |
 
 ## Level-3: 组件包 (`packages/loop-components/`)
 
@@ -47,6 +46,7 @@ Level-1  config/ (6) + infra/ (4+)         工具链配置 + 基础设施
 | `tag-components` | 标签专用组件 |
 | `adapter-interfaces` | Adapter 接口定义 |
 | `evaluate-adapter` | 评测 Adapter 实现 |
+| `prompt-pages` / smart-optimize | Prompt 页内「智能优化」MVP（Mock 任务） |
 | `observation-adapter` | 可观测性 Adapter 实现 |
 | `components-with-adapter` | Adapter 消费层 |
 

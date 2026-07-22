@@ -39,6 +39,19 @@ export enum ExptType {
   Offline = 1,
   Online = 2,
 }
+/** 离线实验分析状态（与表字段 offline_expt_analysis_status 一致） */
+export enum OfflineExptAnalysisStatus {
+  /** 未开始 */
+  NotStarted = 0,
+  /** 进行中 */
+  Processing = 1,
+  /** 成功 */
+  Success = 2,
+  /** 失败 */
+  Failed = 3,
+  /** 已被新版本/新分析取代 */
+  Superseded = 4,
+}
 export enum SourceType {
   Evaluation = 1,
   AutoTask = 2,
@@ -95,9 +108,17 @@ export interface Experiment {
    * 关联的智能评测会话ID
   */
   thread_id?: string,
+  enable_extract_trajectory?: boolean,
   /** 触发方式 */
   trigger_type?: ExptTriggerType,
   expt_source?: ExptSource,
+  /** 通知配置 */
+  notification_conf?: ExptNotificationConf,
+  ext?: {
+    [key: string | number]: string
+  },
+  /** 离线实验分析状态 */
+  offline_expt_analysis_status?: OfflineExptAnalysisStatus,
 }
 /** 实验模板基础信息 */
 export interface ExptTemplateMeta {
@@ -143,6 +164,9 @@ export interface ExptTemplate {
   score_weight_config?: ExptScoreWeight,
   expt_info?: ExptInfo,
   expt_source?: ExptSource,
+  enable_extract_trajectory?: boolean,
+  /** 通知配置 */
+  notification_conf?: ExptNotificationConf,
   base_info?: common.BaseInfo,
 }
 export interface TaskTimeRange {
@@ -170,6 +194,8 @@ export enum Frequency {
   FrequencyFriday = "friday",
   FrequencySaturday = "saturday",
   FrequencySunday = "sunday",
+  FrequencyEveryHour = "every_hour",
+  FrequencyEveryMinute = "every_minute",
 }
 export interface Scheduler {
   /** 定时触发器开关，默认关闭 */
@@ -182,6 +208,8 @@ export interface Scheduler {
   start_time?: string,
   /** 生效结束时间（时间戳，秒） */
   end_time?: string,
+  /** 触发间隔（every_minute时为分钟数，every_hour时为小时数） */
+  trigger_interval?: number,
 }
 export interface ExptInfo {
   created_expt_count?: number,
@@ -224,6 +252,30 @@ export interface FieldMapping {
   field_name?: string,
   const_value?: string,
   from_field_name?: string,
+}
+/**
+ * -------------------------------
+ * 通知配置相关结构定义
+ * -------------------------------
+ * 通知配置（公共触发条件 + 各渠道独立开关/参数）
+*/
+export interface ExptNotificationConf {
+  /** 公共触发条件（统一，前端只需配一份 filter） */
+  filter?: Filters,
+  /** Webhook 渠道配置 */
+  webhook?: WebhookNotificationConf,
+  /** 飞书渠道配置 */
+  feishu_notification?: FeishuNotificationConf,
+}
+export interface WebhookNotificationConf {
+  enable: boolean,
+  /** Webhook URL 列表，多个用逗号分隔 */
+  urls?: string,
+}
+export interface FeishuNotificationConf {
+  enable: boolean,
+  /** 通知目标用户 ID（为空时默认用实验创建者） */
+  user_id?: string,
 }
 export interface ExptFilterOption {
   fuzzy_name?: string,

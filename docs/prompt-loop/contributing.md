@@ -22,7 +22,7 @@
 ### 欢迎贡献
 
 - **用户可见品牌**：`loop-lng`  locales、登录页、Navbar、Footer、浏览器 title
-- **本地运维脚本**：`scripts/local/`（Docker 规避、模型健康、seed、tunnel）
+- **本地运维脚本**：`scripts/local/`（Podman 生命周期、模型健康、seed、tunnel）
 - **场景示例**：`examples/tire-ai-diagnosis/`
 - **文档**：`docs/prompt-loop/`、`docs/guidance/local-macos-docker.md`
 - **关联集成**：与 `tire-ai-diagnosis` 的配置导入、Trace 契约说明
@@ -49,14 +49,16 @@
 ### Prompt Loop 本仓库
 
 ```bash
-# 1. 启动 Docker 栈（macOS 推荐 wrapper，避免 volume 挂死）
-scripts/local/docker-compose-local.sh start
+# 1. 当前公司环境只使用 Podman；Docker Desktop 不可用
+export PODMAN_LOOP="$HOME/Documents/Codex/2026-07-14/du-q/podman-fuse-bin/podman"
+/opt/podman/bin/podman machine start podman-loop-dev
+DOCKER_BIN="$PODMAN_LOOP" scripts/local/docker-compose-local.sh start
 
 # 2. 配置模型（项目根 .env.local，勿提交）
 #    OPENAI_API_KEY / ARK_API_KEY / DEEPSEEK_API_KEY / JOYBUILD_API_KEY
 
-scripts/local/docker-compose-local.sh refresh-config
-scripts/local/docker-compose-local.sh restart-app   # 模型变更后
+DOCKER_BIN="$PODMAN_LOOP" scripts/local/docker-compose-local.sh refresh-config
+DOCKER_BIN="$PODMAN_LOOP" scripts/local/docker-compose-local.sh restart-app
 
 # 3. 冒烟
 scripts/local/smoke-test.sh
@@ -93,7 +95,7 @@ Trace 集成代码在 **tire 仓库**的 `services/api/clients/prompt_loop_trace
 
 | 脚本 | 用途 |
 |------|------|
-| `docker-compose-local.sh` | 本地 Docker 生命周期 |
+| `docker-compose-local.sh` | compose-compatible 生命周期；当前由 Podman wrapper 调用 |
 | `model-health-check.sh` | 模型连通性 |
 | `seed-tire-prompt.sh` | 导入轮胎 Prompt + 评测集 |
 | `create-smoke-pat.sh` | 生成 Trace 用 PAT（输出写入 tire .env） |
@@ -136,6 +138,7 @@ cd backend && go test -gcflags="all=-N -l" ./...
 |----------|----------|
 | 新 env 变量 | `docs/guidance/local-macos-docker.md` 或 `docs/prompt-loop/runbook.md` |
 | 新 local 脚本 | 脚本 `usage()` + runbook 命令表 |
+| 智能优化算法、任务状态或预算 | PRD + TRD + HANDOFF |
 | Trace / OpenAPI 契约 | `architecture.md` + `examples/tire-ai-diagnosis/README.md` |
 | 品牌/UI 大范围修改 | 考虑 `rebrand-changelog.md`（若创建） |
 
@@ -153,6 +156,7 @@ cd backend && go test -gcflags="all=-N -l" ./...
 - [ ] 若改 seed / 评测 schema，已运行 `bash scripts/local/seed-tire-prompt.sh` 验证
 - [ ] 若改模型相关逻辑，已运行 `bash scripts/local/model-health-check.sh`
 - [ ] 文档或脚本 `usage` 已同步
+- [ ] 本地容器操作仅使用 Podman，且未执行 `podman system reset`
 
 **Commit 类型**仍遵循 Conventional Commits；fork 特有改动可用 scope，例如：
 

@@ -3490,6 +3490,9 @@ importers:
       '@coze-arch/coze-design':
         specifier: 0.0.7-alpha.5f0418
         version: 0.0.7-alpha.5f0418(@floating-ui/dom@1.7.6)(@tiptap/suggestion@3.22.0(@tiptap/core@3.22.0(@tiptap/pm@3.22.0))(@tiptap/pm@3.22.0))(@types/react-dom@18.2.15)(@types/react@18.2.37)(react-dom@18.2.0(react@18.2.0))(react@18.2.0)
+      '@cozeloop/api-schema':
+        specifier: workspace:*
+        version: link:../../loop-base/api-schema
       '@cozeloop/biz-hooks-adapter':
         specifier: workspace:*
         version: link:../../loop-components/biz-hooks
@@ -3502,6 +3505,9 @@ importers:
       '@cozeloop/i18n-adapter':
         specifier: workspace:*
         version: link:../../loop-base/i18n
+      '@cozeloop/prompt-pages':
+        specifier: workspace:*
+        version: link:../prompt-pages
       '@cozeloop/toolkit':
         specifier: workspace:*
         version: link:../../loop-base/toolkit
@@ -3657,6 +3663,9 @@ importers:
       '@cozeloop/components':
         specifier: workspace:*
         version: link:../../loop-base/components
+      '@cozeloop/evaluate-components':
+        specifier: workspace:*
+        version: link:../../loop-components/evaluate-components
       '@cozeloop/hooks':
         specifier: workspace:*
         version: link:../../loop-base/base-hooks

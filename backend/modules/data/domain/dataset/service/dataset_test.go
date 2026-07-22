@@ -21,6 +21,25 @@ import (
 	"github.com/coze-dev/coze-loop/backend/modules/data/pkg/pagination"
 )
 
+func TestMergeDatasetFeatures(t *testing.T) {
+	t.Parallel()
+	defaults := &entity.DatasetFeatures{
+		EditSchema:   true,
+		RepeatedData: false,
+		MultiModal:   true,
+	}
+	got := mergeDatasetFeatures(&entity.DatasetFeatures{EditSchema: true}, defaults)
+	assert.True(t, got.EditSchema)
+	assert.True(t, got.MultiModal)
+	assert.False(t, got.RepeatedData)
+
+	got = mergeDatasetFeatures(nil, defaults)
+	assert.Equal(t, defaults, got)
+
+	got = mergeDatasetFeatures(&entity.DatasetFeatures{RepeatedData: true}, nil)
+	assert.True(t, got.RepeatedData)
+}
+
 func TestDatasetServiceImpl_CreateDataset(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	defer ctrl.Finish()

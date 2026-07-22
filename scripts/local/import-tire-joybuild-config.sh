@@ -2,10 +2,9 @@
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
-SOURCE_ENV="${TIRE_AI_DIAGNOSIS_ENV:-/Users/wangdujuan/Projects/tire-ai-diagnosis/services/api/.env}"
-SOURCE_EXAMPLE="${TIRE_AI_DIAGNOSIS_ENV_EXAMPLE:-/Users/wangdujuan/Projects/tire-ai-diagnosis/services/api/.env.example}"
+SOURCE_ENV="${TIRE_AI_DIAGNOSIS_ENV:-/Users/wangdujuan10/tire-ai-diagnosis/services/api/.env}"
+SOURCE_EXAMPLE="${TIRE_AI_DIAGNOSIS_ENV_EXAMPLE:-/Users/wangdujuan10/tire-ai-diagnosis/services/api/.env.example}"
 TARGET_ENV="$ROOT_DIR/.env.local"
-NAMES=(JOYBUILD_API_KEY JOYBUILD_BASE_URL JOYBUILD_MODEL)
 
 env_value_from_file() {
   local file="$1"
@@ -83,14 +82,10 @@ chmod 600 "$TARGET_ENV"
 tmp_file="$(mktemp)"
 cp "$TARGET_ENV" "$tmp_file"
 
-declare -A VALUES=(
-  [JOYBUILD_API_KEY]="$api_key"
-  [JOYBUILD_BASE_URL]="$base_url"
-  [JOYBUILD_MODEL]="$model"
-)
+upsert_env() {
+  local name="$1"
+  local value="$2"
 
-for name in "${NAMES[@]}"; do
-  value="${VALUES[$name]}"
   if /usr/bin/grep -q "^$name=" "$tmp_file"; then
     awk -v key="$name" -v value="$value" 'BEGIN { updated=0 } $0 ~ "^" key "=" { print key "=" value; updated=1; next } { print } END { if (!updated) print key "=" value }' "$tmp_file" >"$tmp_file.next"
   else
@@ -98,7 +93,11 @@ for name in "${NAMES[@]}"; do
     printf '%s=%s\n' "$name" "$value" >>"$tmp_file.next"
   fi
   mv "$tmp_file.next" "$tmp_file"
-done
+}
+
+upsert_env JOYBUILD_API_KEY "$api_key"
+upsert_env JOYBUILD_BASE_URL "$base_url"
+upsert_env JOYBUILD_MODEL "$model"
 
 mv "$tmp_file" "$TARGET_ENV"
 chmod 600 "$TARGET_ENV"

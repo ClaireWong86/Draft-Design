@@ -1,0 +1,11 @@
+// Copyright (c) 2025 coze-dev Authors
+// SPDX-License-Identifier: Apache-2.0
+export { SmartOptimizeHeaderDropdown } from './header-dropdown';
+export { SmartOptimizeWizard } from './wizard';
+export { SmartOptimizeCreateConfirmModal } from './create-confirm-modal';
+export { SmartOptimizeTaskPanel } from './task-panel';
+export { renderSmartOptimizeHeaderButtons } from './render-header-buttons';
+export { mockOptimizeTaskClient } from './mock-client';
+export { optimizeTaskClient } from './client';
+export { validatePromptForSmartOptimize } from './validate-prompt';
+export type { OptimizeSourceType, OptimizeTask } from './types';

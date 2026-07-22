@@ -21,6 +21,8 @@ import {
   useEvaluateConfigCommunityInit,
 } from '@cozeloop/evaluate';
 
+import { ExperimentSmartOptimizeEntry } from './components/experiment-smart-optimize-entry';
+
 const App = () => {
   /** 初始化社区版评测配置 */
   useEvaluateConfigCommunityInit();
@@ -65,7 +67,13 @@ const App = () => {
         <Route path="experiments/create" element={<ExperimentCreatePage />} />
         <Route
           path="experiments/:experimentID"
-          element={<ExperimentDetailPage />}
+          element={
+            <ExperimentDetailPage
+              renderExtraButtons={experiment => (
+                <ExperimentSmartOptimizeEntry experiment={experiment} />
+              )}
+            />
+          }
         />
         <Route
           path="experiments/contrast"

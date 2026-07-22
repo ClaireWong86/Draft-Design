@@ -60,7 +60,7 @@ func InitDatasetApplication(idgen2 idgen.IIDGenerator, db2 db.Provider, cmdable 
 	client := oss.NewClient(objectStorage)
 	iUnionFS := unionfs.NewUnionFS(client)
 	iLocker := lock.NewRedisLocker(cmdable)
-	serviceIDatasetAPI := service.NewDatasetServiceImpl(db2, idgen2, iDatasetAPI, iConfig, iDatasetJobPublisher, iUnionFS, iLocker)
+	serviceIDatasetAPI := service.NewDatasetServiceImpl(db2, idgen2, iDatasetAPI, iConfig, iDatasetJobPublisher, iUnionFS, iLocker, batchObjectStorage)
 	iDatasetApplication := NewDatasetApplicationImpl(iAuthProvider, serviceIDatasetAPI, iDatasetAPI, auditClient)
 	return iDatasetApplication, nil
 }

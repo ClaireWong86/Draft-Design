@@ -11,6 +11,7 @@ include "../evaluation/coze.loop.evaluation.evaluator.thrift"
 include "../evaluation/coze.loop.evaluation.eval_target.thrift"
 include "../evaluation/coze.loop.evaluation.expt.thrift"
 include "../evaluation/coze.loop.evaluation.openapi.thrift"
+include "../evaluation/coze.loop.evaluation.optimize.thrift"
 include "../data/coze.loop.data.dataset.thrift"
 include "../prompt/coze.loop.prompt.manage.thrift"
 include "../prompt/coze.loop.prompt.tool_manage.thrift"
@@ -30,6 +31,7 @@ service EvaluatorService extends coze.loop.evaluation.evaluator.EvaluatorService
 service EvalTargetService extends coze.loop.evaluation.eval_target.EvalTargetService{}
 service ExperimentService extends coze.loop.evaluation.expt.ExperimentService{}
 service EvalOpenAPIService extends coze.loop.evaluation.openapi.EvaluationOpenAPIService{}
+service OptimizeService extends coze.loop.evaluation.optimize.OptimizeService{}
 
 service DatasetService extends coze.loop.data.dataset.DatasetService{}
 service TagService extends coze.loop.data.tag.TagService{}

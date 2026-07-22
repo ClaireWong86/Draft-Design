@@ -90,11 +90,13 @@ func convert2DatasetFieldSchema(ctx context.Context, schema *entity.FieldSchema)
 		Name:           &schema.Name,
 		Description:    &schema.Description,
 		ContentType:    contentType,
-		DefaultFormat:  gptr.Of(dataset.FieldDisplayFormat(schema.DefaultDisplayFormat)),
 		Status:         gptr.Of(dataset.FieldStatus(schema.Status)),
 		MultiModelSpec: convert2DatasetMultiModalSpec(ctx, schema.MultiModelSpec),
 		TextSchema:     &schema.TextSchema,
 		Hidden:         &schema.Hidden,
+	}
+	if schema.DefaultDisplayFormat != 0 {
+		fieldSchema.DefaultFormat = gptr.Of(dataset.FieldDisplayFormat(schema.DefaultDisplayFormat))
 	}
 	return fieldSchema, nil
 }
@@ -125,20 +127,106 @@ func convert2DatasetFieldData(ctx context.Context, fieldData *entity.FieldData) 
 		Name: &fieldData.Name,
 	}
 	if fieldData.Content != nil {
-		var contentType *dataset.ContentType
-		if fieldData.Content.ContentType != nil {
-			convRes, err := dataset.ContentTypeFromString(common.ConvertContentTypeDO2DTO(gptr.Indirect(fieldData.Content.ContentType)))
-			if err != nil {
-				return nil, err
-			}
-			contentType = &convRes
+		if err := fillDatasetFieldDataFromContent(ctx, datasetFieldData, fieldData.Content); err != nil {
+			return nil, err
 		}
-		datasetFieldData.ContentType = contentType
-		datasetFieldData.Format = gptr.Of(dataset.FieldDisplayFormat(gptr.Indirect(fieldData.Content.Format)))
-		// TODO image multi-parts本期不支持，故暂不实现
-		datasetFieldData.Content = fieldData.Content.Text
 	}
 	return datasetFieldData, nil
+}
+
+// convert2DatasetPart 将多模态子内容（entity.Content）转换为 dataset.FieldData part
+func convert2DatasetPart(ctx context.Context, content *entity.Content) (*dataset.FieldData, error) {
+	if content == nil {
+		return nil, nil
+	}
+	part := &dataset.FieldData{}
+	if err := fillDatasetFieldDataFromContent(ctx, part, content); err != nil {
+		return nil, err
+	}
+	return part, nil
+}
+
+// fillDatasetFieldDataFromContent 将 entity.Content 的文本/图片/多模态内容填充到 dataset.FieldData
+func fillDatasetFieldDataFromContent(ctx context.Context, target *dataset.FieldData, content *entity.Content) error {
+	if target == nil || content == nil {
+		return nil
+	}
+	if content.ContentType != nil {
+		convRes, err := dataset.ContentTypeFromString(common.ConvertContentTypeDO2DTO(gptr.Indirect(content.ContentType)))
+		if err != nil {
+			return err
+		}
+		target.ContentType = &convRes
+	}
+	target.Format = gptr.Of(dataset.FieldDisplayFormat(gptr.Indirect(content.Format)))
+	target.Content = content.Text
+
+	// 图片/音频/视频 -> attachments
+	if attachments := convert2DatasetAttachments(content); len(attachments) > 0 {
+		target.Attachments = attachments
+	}
+
+	// 图文混排 -> parts（递归）
+	if len(content.MultiPart) > 0 {
+		parts := make([]*dataset.FieldData, 0, len(content.MultiPart))
+		for _, sub := range content.MultiPart {
+			part, err := convert2DatasetPart(ctx, sub)
+			if err != nil {
+				return err
+			}
+			if part != nil {
+				parts = append(parts, part)
+			}
+		}
+		target.Parts = parts
+	}
+	return nil
+}
+
+// convert2DatasetAttachments 从 Content 的多模态字段构造 dataset 外部存储附件
+func convert2DatasetAttachments(content *entity.Content) []*dataset.ObjectStorage {
+	if content == nil {
+		return nil
+	}
+	attachments := make([]*dataset.ObjectStorage, 0, 1)
+	if content.Image != nil {
+		attachments = append(attachments, &dataset.ObjectStorage{
+			Provider: convert2DatasetStorageProvider(content.Image.StorageProvider),
+			Name:     content.Image.Name,
+			URI:      content.Image.URI,
+			URL:      content.Image.URL,
+			ThumbURL: content.Image.ThumbURL,
+		})
+	}
+	if content.Audio != nil {
+		attachments = append(attachments, &dataset.ObjectStorage{
+			Provider: convert2DatasetStorageProvider(content.Audio.StorageProvider),
+			Name:     content.Audio.Name,
+			URI:      content.Audio.URI,
+			URL:      content.Audio.URL,
+		})
+	}
+	if content.Video != nil {
+		attachments = append(attachments, &dataset.ObjectStorage{
+			Provider: convert2DatasetStorageProvider(content.Video.StorageProvider),
+			Name:     content.Video.Name,
+			URI:      content.Video.URI,
+			URL:      content.Video.URL,
+			ThumbURL: content.Video.ThumbURL,
+		})
+	}
+	if len(attachments) == 0 {
+		return nil
+	}
+	return attachments
+}
+
+// convert2DatasetStorageProvider entity.StorageProvider -> dataset.StorageProvider
+func convert2DatasetStorageProvider(provider *entity.StorageProvider) *dataset.StorageProvider {
+	if provider == nil {
+		return nil
+	}
+	return gptr.Of(dataset.StorageProvider(*provider))
 }
 
 func convert2DatasetItem(ctx context.Context, item *entity.EvaluationSetItem) (datasetItem *dataset.DatasetItem, err error) {

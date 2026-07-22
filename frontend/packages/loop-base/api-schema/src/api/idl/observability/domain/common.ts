@@ -23,6 +23,10 @@ export enum SpanListType {
   AllSpan = "all_span",
   LlmSpan = "llm_span",
 }
+export enum MetadataScene {
+  Default = "default",
+  DataExtract = "data_extract",
+}
 export interface OrderBy {
   field?: string,
   is_asc?: boolean,
