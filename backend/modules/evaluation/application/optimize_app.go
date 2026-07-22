@@ -301,7 +301,14 @@ type optimizePolicy struct {
 	maxModelCalls   int
 }
 
-const goodcaseJudgeBatchSize = 12
+const (
+	goodcaseJudgeBatchMin             = 4
+	goodcaseJudgeBatchMax             = 40
+	goodcaseJudgeOutputTokenBudget    = 4096
+	goodcaseJudgeOutputBaseTokens     = 512
+	goodcaseJudgeOutputTokensPerCase  = 160
+	goodcaseJudgeInputCharBudget      = 120000
+)
 
 func policyForMode(modeScore float64) optimizePolicy {
 	policy := optimizePolicy{rounds: 2, candidates: 2, validationRatio: 0.25, minGain: 0.001, maxModelCalls: 48}
@@ -604,7 +611,8 @@ func goodcaseJudgeBatchCount(caseCount int) int {
 	if caseCount <= 0 {
 		return 0
 	}
-	return (caseCount + goodcaseJudgeBatchSize - 1) / goodcaseJudgeBatchSize
+	// Reserve against the smallest dynamic batch so call-budget remains safe.
+	return (caseCount + goodcaseJudgeBatchMin - 1) / goodcaseJudgeBatchMin
 }
 
 type goodcaseJudgeInput struct {
@@ -627,37 +635,178 @@ type goodcaseJudgeOutput struct {
 }
 
 func (a *OptimizeApplication) judgeGoodcaseBatches(ctx context.Context, task *entity.OptimizeTaskRecord, results []candidateCaseResult) error {
-	for start := 0; start < len(results); start += goodcaseJudgeBatchSize {
-		end := start + goodcaseJudgeBatchSize
-		if end > len(results) {
-			end = len(results)
+	inputs := make([]goodcaseJudgeInput, 0, len(results))
+	for index := range results {
+		item := &results[index]
+		reference, ok := item.input["reference_output"]
+		if !ok || strings.TrimSpace(fmt.Sprint(reference)) == "" {
+			return fmt.Errorf("goodcase %s reference_output mapping did not resolve to a value", item.caseID)
 		}
-		inputs := make([]goodcaseJudgeInput, 0, end-start)
-		for index := start; index < end; index++ {
-			item := &results[index]
-			reference, ok := item.input["reference_output"]
-			if !ok || strings.TrimSpace(fmt.Sprint(reference)) == "" {
-				return fmt.Errorf("goodcase %s reference_output mapping did not resolve to a value", item.caseID)
-			}
-			var baseline *string
-			if actual, exists := item.input["actual_output"]; exists && strings.TrimSpace(fmt.Sprint(actual)) != "" {
-				value := fmt.Sprint(actual)
-				baseline = &value
-			}
-			inputs = append(inputs, goodcaseJudgeInput{
-				CaseID: item.caseID, Input: goodcaseJudgeVariables(item.input), ReferenceOutput: fmt.Sprint(reference),
-				BaselineActual: baseline, CandidateActual: item.output,
-			})
+		var baseline *string
+		if actual, exists := item.input["actual_output"]; exists && strings.TrimSpace(fmt.Sprint(actual)) != "" {
+			value := fmt.Sprint(actual)
+			baseline = &value
 		}
-		judged, err := a.callGoodcaseJudgeBatch(ctx, task, inputs)
+		inputs = append(inputs, goodcaseJudgeInput{
+			CaseID: item.caseID, Input: goodcaseJudgeVariables(item.input), ReferenceOutput: fmt.Sprint(reference),
+			BaselineActual: baseline, CandidateActual: item.output,
+		})
+	}
+
+	offset := 0
+	batchNo := 0
+	for offset < len(inputs) {
+		batchNo++
+		remaining := inputs[offset:]
+		size := estimateGoodcaseJudgeBatchSize(remaining)
+		if size > len(remaining) {
+			size = len(remaining)
+		}
+		window := remaining[:size]
+		size = estimateGoodcaseJudgeBatchSize(window)
+		if size > len(window) {
+			size = len(window)
+		}
+		window = remaining[:size]
+		judged, err := a.callGoodcaseJudgeBatchWithSplit(ctx, task, window)
 		if err != nil {
-			return fmt.Errorf("judge goodcase batch %d: %w", start/goodcaseJudgeBatchSize+1, err)
+			return fmt.Errorf("judge goodcase batch %d: %w", batchNo, err)
 		}
-		if err := applyGoodcaseJudgeOutput(results[start:end], judged); err != nil {
-			return fmt.Errorf("apply goodcase batch %d: %w", start/goodcaseJudgeBatchSize+1, err)
+		if err := applyGoodcaseJudgeOutput(results[offset:offset+len(window)], judged); err != nil {
+			return fmt.Errorf("apply goodcase batch %d: %w", batchNo, err)
 		}
+		offset += len(window)
 	}
 	return nil
+}
+
+func estimateGoodcaseJudgeBatchSize(inputs []goodcaseJudgeInput) int {
+	if len(inputs) == 0 {
+		return goodcaseJudgeBatchMin
+	}
+	maxByOutput := (goodcaseJudgeOutputTokenBudget - goodcaseJudgeOutputBaseTokens) / goodcaseJudgeOutputTokensPerCase
+	if maxByOutput < goodcaseJudgeBatchMin {
+		maxByOutput = goodcaseJudgeBatchMin
+	}
+	if maxByOutput > goodcaseJudgeBatchMax {
+		maxByOutput = goodcaseJudgeBatchMax
+	}
+
+	totalChars := 0
+	for _, input := range inputs {
+		totalChars += len(input.ReferenceOutput) + len(input.CandidateActual)
+		if input.BaselineActual != nil {
+			totalChars += len(*input.BaselineActual)
+		}
+		encoded, err := json.Marshal(input.Input)
+		if err != nil {
+			totalChars += 256
+			continue
+		}
+		totalChars += len(encoded)
+	}
+	avgChars := totalChars / len(inputs)
+	if avgChars < 1 {
+		avgChars = 1
+	}
+	maxByInput := goodcaseJudgeInputCharBudget / avgChars
+	if maxByInput < goodcaseJudgeBatchMin {
+		maxByInput = goodcaseJudgeBatchMin
+	}
+
+	size := maxByOutput
+	if maxByInput < size {
+		size = maxByInput
+	}
+	if size > goodcaseJudgeBatchMax {
+		size = goodcaseJudgeBatchMax
+	}
+	if size < goodcaseJudgeBatchMin {
+		size = goodcaseJudgeBatchMin
+	}
+	if size > len(inputs) {
+		size = len(inputs)
+	}
+	return size
+}
+
+func (a *OptimizeApplication) callGoodcaseJudgeBatchWithSplit(ctx context.Context, task *entity.OptimizeTaskRecord, inputs []goodcaseJudgeInput) (*goodcaseJudgeOutput, error) {
+	judged, err := a.callGoodcaseJudgeBatch(ctx, task, inputs)
+	if err == nil {
+		coverErr := validateGoodcaseJudgeCoverage(inputs, judged)
+		if coverErr == nil {
+			return judged, nil
+		}
+		err = coverErr
+	}
+	if !isRetriableGoodcaseJudgeError(err) || len(inputs) <= 1 {
+		return nil, err
+	}
+	mid := len(inputs) / 2
+	left, leftErr := a.callGoodcaseJudgeBatchWithSplit(ctx, task, inputs[:mid])
+	if leftErr != nil {
+		return nil, leftErr
+	}
+	right, rightErr := a.callGoodcaseJudgeBatchWithSplit(ctx, task, inputs[mid:])
+	if rightErr != nil {
+		return nil, rightErr
+	}
+	return mergeGoodcaseJudgeOutputs(left, right), nil
+}
+
+func validateGoodcaseJudgeCoverage(inputs []goodcaseJudgeInput, judged *goodcaseJudgeOutput) error {
+	if judged == nil {
+		return errors.New("goodcase judge output is nil")
+	}
+	expected := make(map[string]struct{}, len(inputs))
+	for _, input := range inputs {
+		expected[input.CaseID] = struct{}{}
+	}
+	seen := make(map[string]struct{}, len(judged.Scores))
+	for _, score := range judged.Scores {
+		if _, ok := expected[score.CaseID]; !ok {
+			return fmt.Errorf("unknown case_id %q", score.CaseID)
+		}
+		if _, dup := seen[score.CaseID]; dup {
+			return fmt.Errorf("duplicate case_id %q", score.CaseID)
+		}
+		if score.AfterScore == nil {
+			return fmt.Errorf("case %s missing after_score", score.CaseID)
+		}
+		seen[score.CaseID] = struct{}{}
+	}
+	if len(seen) != len(expected) {
+		return fmt.Errorf("judge returned %d of %d cases", len(seen), len(expected))
+	}
+	return nil
+}
+
+func mergeGoodcaseJudgeOutputs(parts ...*goodcaseJudgeOutput) *goodcaseJudgeOutput {
+	merged := &goodcaseJudgeOutput{}
+	for _, part := range parts {
+		if part == nil {
+			continue
+		}
+		merged.Scores = append(merged.Scores, part.Scores...)
+	}
+	return merged
+}
+
+func isRetriableGoodcaseJudgeError(err error) bool {
+	if err == nil {
+		return false
+	}
+	msg := strings.ToLower(err.Error())
+	needles := []string{
+		"parse goodcase", "missing case", "unknown case_id", "duplicate case_id",
+		"judge returned", "context", "token", "truncated", "too long", "maximum context",
+	}
+	for _, needle := range needles {
+		if strings.Contains(msg, needle) {
+			return true
+		}
+	}
+	return false
 }
 
 func goodcaseJudgeVariables(input map[string]any) map[string]any {

@@ -5,6 +5,9 @@ package application
 
 import (
 	"context"
+	"errors"
+	"fmt"
+	"strings"
 	"testing"
 
 	"github.com/coze-dev/coze-loop/backend/infra/middleware/session"
@@ -88,10 +91,11 @@ func TestMapCaseEvidencePreservesLargeItemID(t *testing.T) {
 }
 
 func TestGoodcaseJudgeBatchCount(t *testing.T) {
+	// Budget reservation uses the smallest dynamic batch (4).
 	for _, tc := range []struct {
 		cases int
 		want  int
-	}{{0, 0}, {1, 1}, {12, 1}, {13, 2}, {24, 2}, {25, 3}} {
+	}{{0, 0}, {1, 1}, {4, 1}, {5, 2}, {12, 3}, {13, 4}} {
 		if got := goodcaseJudgeBatchCount(tc.cases); got != tc.want {
 			t.Fatalf("count(%d) = %d, want %d", tc.cases, got, tc.want)
 		}
@@ -275,6 +279,85 @@ func TestNormalizeOptimizerVariables(t *testing.T) {
 	}
 	if got != "inspect {{ IMAGE_TIRE }} with JSON_SCHEMA" || len(unknown) != 1 || unknown[0] != "JSON_SCHEMA" {
 		t.Fatalf("unexpected normalized prompt=%q unknown=%#v", got, unknown)
+	}
+}
+
+func TestEstimateGoodcaseJudgeBatchSizeRespectsBudgets(t *testing.T) {
+	short := make([]goodcaseJudgeInput, 30)
+	for i := range short {
+		short[i] = goodcaseJudgeInput{
+			CaseID: fmt.Sprintf("%d", i), Input: map[string]any{"q": "ok"},
+			ReferenceOutput: `{"ok":true}`, CandidateActual: `{"ok":true}`,
+		}
+	}
+	got := estimateGoodcaseJudgeBatchSize(short)
+	if got < goodcaseJudgeBatchMin || got > goodcaseJudgeBatchMax {
+		t.Fatalf("short batch size out of range: %d", got)
+	}
+	if got < 20 {
+		t.Fatalf("short samples should batch aggressively, got %d", got)
+	}
+
+	longText := strings.Repeat("x", 20000)
+	long := []goodcaseJudgeInput{{
+		CaseID: "a", Input: map[string]any{"blob": longText},
+		ReferenceOutput: longText, CandidateActual: longText,
+	}, {
+		CaseID: "b", Input: map[string]any{"blob": longText},
+		ReferenceOutput: longText, CandidateActual: longText,
+	}, {
+		CaseID: "c", Input: map[string]any{"blob": longText},
+		ReferenceOutput: longText, CandidateActual: longText,
+	}, {
+		CaseID: "d", Input: map[string]any{"blob": longText},
+		ReferenceOutput: longText, CandidateActual: longText,
+	}, {
+		CaseID: "e", Input: map[string]any{"blob": longText},
+		ReferenceOutput: longText, CandidateActual: longText,
+	}}
+	gotLong := estimateGoodcaseJudgeBatchSize(long)
+	if gotLong != goodcaseJudgeBatchMin {
+		t.Fatalf("long samples should shrink to min batch, got %d", gotLong)
+	}
+}
+
+func TestGuardGoodcaseJudgeZerosProtocolBreakDespitePerfectLLM(t *testing.T) {
+	reference := `{"defects":[{"type":"crack"}],"image_quality":"ok"}`
+	perfect := 1.0
+	inputs := []goodcaseJudgeInput{{
+		CaseID: "protocol-break", Input: map[string]any{},
+		ReferenceOutput: reference,
+		CandidateActual: "```json\n" + reference + "\n```",
+	}}
+	judged := &goodcaseJudgeOutput{Scores: []goodcaseJudgeScore{{
+		CaseID: "protocol-break", AfterScore: &perfect, Reason: "looks perfect",
+	}}}
+	guardGoodcaseJudgeOutput(inputs, judged)
+	if judged.Scores[0].AfterScore == nil || *judged.Scores[0].AfterScore != 0 {
+		t.Fatalf("protocol-broken candidate must be hard-zeroed: %#v", judged.Scores[0])
+	}
+	if !strings.Contains(judged.Scores[0].Reason, "candidate protocol guard") {
+		t.Fatalf("expected protocol guard reason, got %q", judged.Scores[0].Reason)
+	}
+}
+
+func TestValidateGoodcaseJudgeCoverageAndMerge(t *testing.T) {
+	one := 1.0
+	inputs := []goodcaseJudgeInput{{CaseID: "a"}, {CaseID: "b"}}
+	if err := validateGoodcaseJudgeCoverage(inputs, &goodcaseJudgeOutput{Scores: []goodcaseJudgeScore{
+		{CaseID: "a", AfterScore: &one},
+	}}); err == nil {
+		t.Fatal("missing case must fail coverage")
+	}
+	merged := mergeGoodcaseJudgeOutputs(
+		&goodcaseJudgeOutput{Scores: []goodcaseJudgeScore{{CaseID: "a", AfterScore: &one}}},
+		&goodcaseJudgeOutput{Scores: []goodcaseJudgeScore{{CaseID: "b", AfterScore: &one}}},
+	)
+	if err := validateGoodcaseJudgeCoverage(inputs, merged); err != nil {
+		t.Fatal(err)
+	}
+	if !isRetriableGoodcaseJudgeError(errors.New("parse goodcase judge output: unexpected EOF")) {
+		t.Fatal("parse errors must be retriable via split")
 	}
 }
 
