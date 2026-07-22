@@ -108,11 +108,11 @@ LLM Judge 不是事实源，至少需要以下保护：
 | M0 多模态执行闭环 | 已完成 | EvaluationSet Items、multipart 保真、原 Prompt baseline、批量 Judge、验证集相对增益 |
 | P0 裁判一致性 | 已完成并部署回归 | 参考 JSON 结构硬校验、拒答检测、可疑全满分复核、硬失败归零；无增益终态 `no_gain` |
 | P1 诊断探针 | 部分完成（确定性 MVP） | 输入完整性、输出协议探针已写入 diagnosis；裸描述/定位等 VLM 探针仍待做 |
-| P2 文本策略路由 | 待做 | 根据感知/推理/协议错误定向生成候选，而非统一改写 |
-| P3 视觉变换 | 待做 | 可复现裁剪/放大/分块/SoM、派生媒体存储和审计 |
-| P4 联合方案搜索 | 待做 | `SolutionPlan` 搜索、质量/成本/延迟多目标选优 |
+| P2 文本策略路由 | MVP 已完成 | 按 failure_stage 定向生成候选（protocol/reasoning/perception/input/general） |
+| P3 视觉变换 | MVP 已完成（提示侧） | `spatial_scan` / `perceive_then_reason` / `region_focus_hint` 作为可复现指令覆盖；真图裁剪/SoM 落盘仍待做 |
+| P4 联合方案搜索 | MVP 已完成 | `SolutionPlan` 按候选槽搜索，验证集增益选优并写入 diagnosis |
 
-P0 已完成代码级保护，并完成无增益 `no_gain` 部署回归。P1 确定性探针（输入完整性 / 输出协议）已接入候选执行诊断。可选再用已知协议变形样本做一次真图硬校验回归。研究侧下一优先是裸描述/定位等 VLM 探针与 P2 文本策略路由。仍应持续观察 Judge 与硬规则冲突率以及全满分复核命中率。
+P0–P4 MVP 已落地。下一深化：裸描述/定位 VLM 探针、派生媒体存储与审计、质量/成本/延迟多目标护栏。仍应持续观察 Judge 与硬规则冲突率以及全满分复核命中率。
 
 ## 7. 验收指标
 

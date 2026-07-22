@@ -17,8 +17,10 @@ const (
 	probeStatusPass       = "pass"
 	probeStatusFail       = "fail"
 	probeStatusUncertain  = "uncertain"
-	probeStageInput       = "input"
-	probeStageProtocol    = "protocol"
+	probeStageInput      = "input"
+	probeStageProtocol   = "protocol"
+	probeStagePerception = "perception"
+	probeStageReasoning  = "reasoning"
 )
 
 // ProbeResult is a deterministic multimodal diagnosis probe outcome.

@@ -242,9 +242,10 @@ func (a *OptimizeApplication) runWorker() {
 }
 
 type optimizerOutput struct {
-	OptimizedPrompt  string   `json:"optimized_prompt"`
-	FailureModes     []string `json:"failure_modes"`
-	SuggestedChanges []string `json:"suggested_instruction_changes"`
+	OptimizedPrompt  string        `json:"optimized_prompt"`
+	FailureModes     []string      `json:"failure_modes"`
+	SuggestedChanges []string      `json:"suggested_instruction_changes"`
+	SolutionPlan     *SolutionPlan `json:"solution_plan,omitempty"`
 }
 
 func (a *OptimizeApplication) processTask(ctx context.Context, taskID int64) {
@@ -344,6 +345,10 @@ func (a *OptimizeApplication) runOptimizationLoop(ctx context.Context, task *ent
 	if err != nil {
 		return nil, nil, "", err
 	}
+	baselineProbes, err := a.collectBaselineProbes(ctx, task, baselineOutputs)
+	if err != nil {
+		return nil, nil, "", err
+	}
 	optimizationIDs, validationIDs := splitCaseIDs(task.CaseItemIDsJSON, policy.validationRatio)
 	current := *task
 	if len(optimizationIDs) > 0 {
@@ -354,6 +359,7 @@ func (a *OptimizeApplication) runOptimizationLoop(ctx context.Context, task *ent
 	var bestCases []candidateCaseResult
 	bestScore := -1e100
 	feedback := ""
+	plans := buildCandidateSolutionPlans(baselineProbes, policy.candidates)
 	for round := 0; round < policy.rounds; round++ {
 		if err := a.repo.RenewLease(ctx, task.ID, leaseToken, time.Now().Add(optimizeStaleTaskTimeout)); err != nil {
 			return nil, nil, "", fmt.Errorf("renew optimize lease: %w", err)
@@ -361,8 +367,10 @@ func (a *OptimizeApplication) runOptimizationLoop(ctx context.Context, task *ent
 		previousBestScore := bestScore
 		roundBestScore := -1e100
 		var roundBestOut *optimizerOutput
+		var roundBestCases []candidateCaseResult
 		for candidate := 0; candidate < policy.candidates; candidate++ {
-			out, err := a.generateCandidate(ctx, &current, feedback)
+			plan := plans[candidate%len(plans)]
+			out, err := a.generateCandidate(ctx, &current, feedback, plan)
 			if err != nil {
 				return nil, nil, "", err
 			}
@@ -381,13 +389,14 @@ func (a *OptimizeApplication) runOptimizationLoop(ctx context.Context, task *ent
 				bestOut, bestCases, bestScore = out, cases, score
 			}
 			if roundBestOut == nil || score > roundBestScore {
-				roundBestOut, roundBestScore = out, score
+				roundBestOut, roundBestScore, roundBestCases = out, score, cases
 			}
 		}
 		if roundBestOut == nil || (round > 0 && roundBestScore-previousBestScore <= policy.minGain) {
 			break
 		}
 		feedback = strings.Join(roundBestOut.SuggestedChanges, "; ")
+		plans = refineSolutionPlans(roundBestCases, baselineProbes, policy.candidates)
 		var snapshot optimize.OptimizePromptSnapshot
 		if err := json.Unmarshal([]byte(current.BaselinePromptJSON), &snapshot); err != nil {
 			return nil, nil, "", err
@@ -399,6 +408,9 @@ func (a *OptimizeApplication) runOptimizationLoop(ctx context.Context, task *ent
 	}
 	if bestOut == nil {
 		return nil, nil, "", errors.New("optimizer produced no candidate")
+	}
+	if bestOut.SolutionPlan != nil {
+		bestOut.SuggestedChanges = appendUniqueStrings(bestOut.SuggestedChanges, bestOut.SolutionPlan.summary())
 	}
 	if task.SourceType == string(optimize.OptimizeSourceTypeEvalSet) && bestScore <= policy.minGain {
 		bestOut.FailureModes = append([]string{
@@ -524,7 +536,7 @@ func (a *OptimizeApplication) executeCandidateCases(ctx context.Context, task *e
 			}
 			mapped["actual_output"] = baseline
 		}
-		caseMessages, convertErr := buildOptimizeCaseMessages(&snapshot, mapped, caseID)
+		caseMessages, convertErr := buildOptimizeCaseMessages(&snapshot, mapped, caseID, out.SolutionPlan)
 		if convertErr != nil {
 			return nil, convertErr
 		}
@@ -562,6 +574,57 @@ func (a *OptimizeApplication) executeCandidateCases(ctx context.Context, task *e
 	return results, nil
 }
 
+func (a *OptimizeApplication) collectBaselineProbes(ctx context.Context, task *entity.OptimizeTaskRecord, baselineOutputs map[string]string) ([]ProbeResult, error) {
+	if task == nil {
+		return nil, nil
+	}
+	evidence, err := a.loadEvidence(ctx, task)
+	if err != nil {
+		return nil, err
+	}
+	probes := make([]ProbeResult, 0)
+	switch response := evidence.(type) {
+	case *evalsetservice.BatchGetEvaluationSetItemsResponse:
+		if response == nil {
+			return probes, nil
+		}
+		for index, item := range response.Items {
+			encoded, marshalErr := json.Marshal(normalizeEvaluationSetItem(item))
+			if marshalErr != nil {
+				return nil, marshalErr
+			}
+			mapped, caseID := mapCaseEvidence(task, encoded, index)
+			reference := ""
+			if v, ok := mapped["reference_output"]; ok {
+				reference = fmt.Sprint(v)
+			}
+			actual := baselineOutputs[caseID]
+			probes = append(probes, runDeterministicProbes(caseID, mapped, reference, actual)...)
+		}
+	case *expt.BatchGetExperimentResultResponse:
+		if response == nil {
+			return probes, nil
+		}
+		for index, item := range response.ItemResults {
+			encoded, marshalErr := json.Marshal(item)
+			if marshalErr != nil {
+				return nil, marshalErr
+			}
+			mapped, caseID := mapCaseEvidence(task, encoded, index)
+			reference := ""
+			if v, ok := mapped["reference_output"]; ok {
+				reference = fmt.Sprint(v)
+			}
+			actual := ""
+			if v, ok := mapped["actual_output"]; ok {
+				actual = fmt.Sprint(v)
+			}
+			probes = append(probes, runDeterministicProbes(caseID, mapped, reference, actual)...)
+		}
+	}
+	return probes, nil
+}
+
 func (a *OptimizeApplication) executeGoodcaseBaseline(ctx context.Context, task *entity.OptimizeTaskRecord) (map[string]string, error) {
 	if task.SourceType != string(optimize.OptimizeSourceTypeEvalSet) {
 		return nil, nil
@@ -588,7 +651,7 @@ func (a *OptimizeApplication) executeGoodcaseBaseline(ctx context.Context, task 
 			return nil, fmt.Errorf("marshal Goodcase baseline item: %w", err)
 		}
 		mapped, caseID := mapCaseEvidence(task, encoded, index)
-		messages, err := buildOptimizeCaseMessages(&snapshot, mapped, caseID)
+		messages, err := buildOptimizeCaseMessages(&snapshot, mapped, caseID, nil)
 		if err != nil {
 			return nil, err
 		}
@@ -601,7 +664,7 @@ func (a *OptimizeApplication) executeGoodcaseBaseline(ctx context.Context, task 
 	return outputs, nil
 }
 
-func buildOptimizeCaseMessages(snapshot *optimize.OptimizePromptSnapshot, mapped map[string]any, caseID string) ([]*entity.Message, error) {
+func buildOptimizeCaseMessages(snapshot *optimize.OptimizePromptSnapshot, mapped map[string]any, caseID string, plan *SolutionPlan) ([]*entity.Message, error) {
 	rendered, err := renderCandidateMessages(snapshot.Messages, mapped)
 	if err != nil {
 		return nil, fmt.Errorf("render candidate case %s: %w", caseID, err)
@@ -616,6 +679,9 @@ func buildOptimizeCaseMessages(snapshot *optimize.OptimizePromptSnapshot, mapped
 	messages, err = appendMappedMultimodalEvidence(messages, mapped)
 	if err != nil {
 		return nil, fmt.Errorf("append candidate evidence for case %s: %w", caseID, err)
+	}
+	if plan != nil {
+		messages = applyVisualTransformToMessages(messages, plan.Visual)
 	}
 	return messages, nil
 }
@@ -1270,7 +1336,7 @@ func (a *OptimizeApplication) callOptimizePrompt(ctx context.Context, task *enti
 	return *reply.Content, nil
 }
 
-func (a *OptimizeApplication) generateCandidate(ctx context.Context, task *entity.OptimizeTaskRecord, feedback string) (*optimizerOutput, error) {
+func (a *OptimizeApplication) generateCandidate(ctx context.Context, task *entity.OptimizeTaskRecord, feedback string, plan SolutionPlan) (*optimizerOutput, error) {
 	evidence, err := a.loadEvidence(ctx, task)
 	if err != nil {
 		return nil, err
@@ -1284,12 +1350,13 @@ func (a *OptimizeApplication) generateCandidate(ctx context.Context, task *entit
 		"mode_score":        task.ModeScore,
 		"evidence":          evidence,
 		"previous_feedback": feedback,
+		"solution_plan":     plan,
 	}
 	userJSON, err := json.Marshal(payload)
 	if err != nil {
 		return nil, err
 	}
-	systemText := "你是多模态 Prompt 优化器。分析基线 Prompt 与评测来源，保持变量名、输出协议和多模态占位符不变，给出更清晰、可执行、感知与推理解耦的指令。只返回 JSON：{\"optimized_prompt\":\"...\",\"failure_modes\":[\"...\"],\"suggested_instruction_changes\":[\"...\"]}。"
+	systemText := optimizerSystemPrompt(plan)
 	userText := string(userJSON)
 	modelID := task.OptimizerModelID
 	maxTokens := int32(4096)
@@ -1324,6 +1391,7 @@ func (a *OptimizeApplication) generateCandidate(ctx context.Context, task *entit
 	if len(unknownVariables) > 0 {
 		out.FailureModes = append(out.FailureModes, fmt.Sprintf("优化模型生成了未定义变量，已按普通文本处理：%s", strings.Join(unknownVariables, ", ")))
 	}
+	attachSolutionPlan(&out, plan)
 	return &out, nil
 }
 
@@ -1623,6 +1691,13 @@ func buildOptimizeResult(record *entity.OptimizeTaskRecord, out *optimizerOutput
 			FailureModes:                out.FailureModes,
 			SuggestedInstructionChanges: out.SuggestedChanges,
 		},
+	}
+	if out.SolutionPlan != nil {
+		planSummary := out.SolutionPlan.summary()
+		result.Diagnosis.SuggestedInstructionChanges = appendUniqueStrings(result.Diagnosis.SuggestedInstructionChanges, planSummary)
+		if encoded, err := json.Marshal(out.SolutionPlan); err == nil {
+			result.Diagnosis.FailureModes = appendUniqueStrings(result.Diagnosis.FailureModes, "solution_plan_json:"+string(encoded))
+		}
 	}
 	var beforeDistribution, afterDistribution []float64
 	for _, item := range caseResults {
