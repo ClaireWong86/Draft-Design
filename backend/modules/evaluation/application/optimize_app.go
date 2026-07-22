@@ -30,6 +30,7 @@ import (
 	promptdto "github.com/coze-dev/coze-loop/backend/kitex_gen/coze/loop/prompt/domain/prompt"
 	"github.com/coze-dev/coze-loop/backend/modules/evaluation/domain/component/rpc"
 	"github.com/coze-dev/coze-loop/backend/modules/evaluation/domain/entity"
+	"github.com/coze-dev/coze-loop/backend/modules/evaluation/domain/events"
 	"github.com/coze-dev/coze-loop/backend/modules/evaluation/domain/repo"
 )
 
@@ -60,6 +61,7 @@ func NewOptimizeApplication(idGenerator idgen.IIDGenerator, taskRepo repo.IOptim
 		evalSets:    evalSets,
 		queue:       make(chan int64, optimizeWorkerQueueSize),
 	}
+	RegisterOptimizeTaskWaker(app)
 	go app.runWorker()
 	go app.resumeQueuedTasks()
 	return app
@@ -110,7 +112,9 @@ func (a *OptimizeApplication) CreateOptimizeTask(ctx context.Context, req *optim
 	if err := a.repo.Create(ctx, record); err != nil {
 		return nil, err
 	}
+	// Local enqueue is authoritative for single-process; RMQ wake is best-effort for multi-instance.
 	a.enqueue(id)
+	events.PublishOptimizeTaskWakeBestEffort(ctx, id)
 	task, err := a.recordToDTO(record, req.Source)
 	if err != nil {
 		return nil, err
@@ -535,6 +539,17 @@ func (a *OptimizeApplication) executeCandidateCases(ctx context.Context, task *e
 				return nil, fmt.Errorf("rerun evaluators for case %s: %w", caseID, err)
 			}
 		}
+		reference := ""
+		if v, ok := mapped["reference_output"]; ok {
+			reference = fmt.Sprint(v)
+		}
+		probes := runDeterministicProbes(caseID, mapped, reference, output)
+		if baseline, ok := mapped["actual_output"]; ok {
+			if text := fmt.Sprint(baseline); text != "" && text != output {
+				probes = append(probes, probeOutputProtocol(caseID, reference, text))
+			}
+		}
+		mergeProbeDiagnosis(out, probes)
 		results = append(results, result)
 	}
 	if len(evaluationSetItems) > 0 {

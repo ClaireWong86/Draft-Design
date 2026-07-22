@@ -221,7 +221,7 @@ CandidateExecutionResult
 - Create 先持久化 `queued` 再入内部有界队列；Worker 使用 lease token 原子 claim 后更新 `running/progress/succeeded/failed/cancelled`。
 - 每 30 秒扫描持久化队列；服务重启会恢复 queued 任务，并将 lease 过期的 running 任务重新排队，最多认领 3 次。
 - Worker 在调用优化模型前后检查取消标记；模型空响应、非 JSON、缺少 `optimized_prompt` 均进入 `failed` 并保留错误。
-- 当前 Worker 可多实例部署：MySQL 是任务事实源，lease 保证并发正确性。RocketMQ 后续只需承担低延迟唤醒，不改变持久任务协议。
+- 当前 Worker 可多实例部署：MySQL 是任务事实源，lease 保证并发正确性。RocketMQ `optimize_task_wake_rmq` 已作为可选低延迟唤醒通道（默认 disable）；不改变持久任务协议。
 
 ### 7.1 当前 Worker 的准确能力边界
 

@@ -39,6 +39,9 @@ var (
 func NewExptEventPublisher(ctx context.Context, cfgFactory conf.IConfigLoaderFactory, mqFactory mq.IFactory) (p events.ExptEventPublisher, err error) {
 	publisherOnce.Do(func() {
 		publisherSingleton, err = newExptEventPublisher(ctx, cfgFactory, mqFactory)
+		if err == nil && publisherSingleton != nil {
+			events.SetOptimizeTaskWakePublisher(publisherSingleton)
+		}
 	})
 	return publisherSingleton, err
 }
@@ -61,6 +64,7 @@ func newExptEventPublisher(ctx context.Context, cfgFactory conf.IConfigLoaderFac
 		rocket.ExptTurnResultFilterRMQKey,
 		rocket.ExptExportCSVEventRMQKey,
 		rocket.ExptLifecycleEventRMQKey,
+		rocket.OptimizeTaskWakeEventRMQKey,
 	} {
 		p := &producer{}
 
@@ -169,6 +173,17 @@ func (e *exptEventPublisher) PublishExptLifecycleEvent(ctx context.Context, even
 func (e *exptEventPublisher) PublishExptWebhookNotifyEvent(ctx context.Context, event *entity.WebhookRetryEvent, duration *time.Duration) error {
 	// 复用 lifecycle topic，通过 tag 区分 webhook 重试消息
 	return e.batchSendWithTag(ctx, rocket.ExptLifecycleEventRMQKey, rocket.TagWebhookRetry, []any{event}, duration)
+}
+
+func (e *exptEventPublisher) PublishOptimizeTaskWakeEvent(ctx context.Context, event *entity.OptimizeTaskWakeEvent, duration *time.Duration) error {
+	if event == nil || event.TaskID <= 0 {
+		return nil
+	}
+	if _, ok := e.producers[rocket.OptimizeTaskWakeEventRMQKey]; !ok {
+		// Producer disabled via disable_produce / missing config: local enqueue remains authoritative.
+		return nil
+	}
+	return e.batchSend(ctx, rocket.OptimizeTaskWakeEventRMQKey, []any{event}, duration)
 }
 
 func (e *exptEventPublisher) batchSend(ctx context.Context, pk string, events []any, duration *time.Duration) error {

@@ -75,6 +75,10 @@ func (m *mockPublisher) PublishExptWebhookNotifyEvent(ctx context.Context, event
 	return nil
 }
 
+func (m *mockPublisher) PublishOptimizeTaskWakeEvent(ctx context.Context, event *entity.OptimizeTaskWakeEvent, duration *time.Duration) error {
+	return nil
+}
+
 // verifySignature 接收方验签逻辑
 func verifySignature(secret, timestamp, nonce, gotSignature string) bool {
 	signMessage := timestamp + "\n" + nonce + "\n"

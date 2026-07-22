@@ -21,6 +21,7 @@ type ExptEventPublisher interface {
 	PublishExptExportCSVEvent(ctx context.Context, events *entity.ExportCSVEvent, duration *time.Duration) error
 	PublishExptLifecycleEvent(ctx context.Context, event *entity.ExptLifecycleEvent, duration *time.Duration, idempotentKey string) error
 	PublishExptWebhookNotifyEvent(ctx context.Context, event *entity.WebhookRetryEvent, duration *time.Duration) error
+	PublishOptimizeTaskWakeEvent(ctx context.Context, event *entity.OptimizeTaskWakeEvent, duration *time.Duration) error
 }
 
 //go:generate mockgen -destination mocks/evaluator_event_publisher_mock.go -package mocks . EvaluatorEventPublisher
